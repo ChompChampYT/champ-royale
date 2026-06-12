@@ -1,0 +1,3421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Champ Royale - Multiplayer</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        /* --- CORE LAYOUT --- */
+        body { 
+            margin: 0; 
+            background: #333; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            font-family: sans-serif; 
+            padding: 20px 0; 
+        }
+
+        #game-container { 
+            position: relative; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        
+        canvas { 
+            background: #5D9E56; 
+            display: block; 
+        } 
+        
+        /* --- UI LAYER (CARDS & TROPHIES) --- */
+        #top-ui {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            display: none;
+            justify-content: space-between; /* Space out the items */
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #main-menu {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            background: rgba(0,0,0,0.92);
+            color: white;
+            padding: 30px;
+            box-sizing: border-box;
+            z-index: 50;
+        }
+
+        #main-menu h1 {
+            margin: 0;
+            font-size: 36px;
+            letter-spacing: 1px;
+            color: #FFD700;
+        }
+
+        #main-menu p {
+            margin: 0;
+            font-size: 16px;
+            color: #ccc;
+            text-align: center;
+            max-width: 420px;
+        }
+
+        .menu-buttons {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(180px, 1fr));
+            gap: 12px;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .menu-button {
+            background: #222;
+            border: 2px solid #555;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 12px 14px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.1s, border-color 0.15s, background 0.15s;
+        }
+
+        .menu-button.play-button {
+            grid-column: span 2;
+            padding: 18px 16px;
+            font-size: 20px;
+            border-color: #FFD700;
+            background: #333;
+        }
+
+        .menu-button:hover {
+            transform: translateY(-2px);
+            border-color: #FFD700;
+            background: #2a2a2a;
+        }
+
+        .main-menu-welcome {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .main-menu-welcome span {
+            display: inline-block;
+            background: #111;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+
+        #trophy-count {
+            color: gold;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 5px 15px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 0 0 10px 10px;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        /* NEW ADMIN/TROPHY BUTTON STYLES */
+        .top-button {
+            background-color: #800080; /* Purple */
+            color: white;
+            border: 2px solid #FFD700;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 5px;
+            box-shadow: 0 2px 0 #4B0082;
+            transition: all 0.1s;
+            margin: 0 5px;
+        }
+        .top-button:active {
+            transform: translateY(2px);
+            box-shadow: none;
+        }
+
+
+        #ui-layer {
+            width: 400px; 
+            margin-top: 15px; 
+            padding: 5px;
+            background: #222; 
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            
+            display: flex; 
+            justify-content: center; 
+            gap: 5px; 
+            pointer-events: all; 
+            flex-wrap: wrap; 
+        }
+        
+        .card-slot {
+            width: 70px; 
+            height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .card {
+            width: 65px; 
+            height: 85px; 
+            background: white; 
+            border-radius: 6px; 
+            border: 3px solid #ccc; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: space-between; 
+            cursor: pointer;
+            font-size: 8px; 
+            padding: 5px 2px;
+            transition: transform 0.1s;
+            position: absolute; 
+        }
+        
+        .elixir-cost { 
+            font-weight: bold; 
+            color: purple; 
+            font-size: 14px; 
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            text-align: center;
+            border: 2px solid purple;
+        }
+
+        .card-stats {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-weight: bold;
+            font-size: 8px;
+            margin-bottom: 2px;
+        }
+        .card-stats span {
+            margin-top: 1px;
+            line-height: 1.1;
+        }
+
+        .card:hover { transform: translateY(-3px); }
+        .card.selected { border-color: yellow; background: #ffffe0; }
+        .card.spell { border-color: orange; }
+        .card.unit { border-color: green; }
+        .card.structure { border-color: brown; } 
+        .card.disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #status-panel {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 14px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            font-size: 16px;
+            border: 2px solid #FFD700;
+            border-radius: 16px;
+            z-index: 5;
+            text-align: center;
+            min-width: 180px;
+        }
+
+        #game-feed {
+            position: absolute;
+            top: 80px;
+            left: calc(100% + 10px);
+            width: 200px;
+            max-height: 520px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.75);
+            border: 2px solid #888;
+            border-radius: 12px;
+            padding: 10px;
+            color: white;
+            font-size: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.7);
+            z-index: 6;
+        }
+        #game-feed h3 {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: #FFD700;
+            text-align: center;
+        }
+        #game-feed .feed-entry {
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+        #game-feed .feed-entry span.actor {
+            font-weight: bold;
+            color: #66ccff;
+        }
+        #game-feed .feed-entry span.bot {
+            color: #ff9999;
+        }
+
+        /* --- ELIXIR BAR (HEIGHT INCREASED AND MOVED DOWN) --- */
+        #elixir-bar {
+            position: absolute; 
+            bottom: 110px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            width: 300px; 
+            height: 30px; 
+            background: #222; 
+            border: 2px solid white; 
+            border-radius: 15px; 
+            visibility: visible; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #elixir-fill { 
+            height: 100%; 
+            background: #D000FF; 
+            width: 0%; 
+            transition: width 0.2s; 
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 1;
+        }
+        #elixir-bar::after {
+            content: attr(data-elixir);
+            position: relative;
+            z-index: 2;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        /* --- GAME OVER SCREEN STYLES --- */
+        #message {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; 
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.7); 
+            z-index: 10;
+        }
+        #message h1 {
+            font-size: 60px;
+            color: white;
+            text-shadow: 4px 4px 0 #000;
+            margin-bottom: 20px;
+        }
+        
+        /* Button Container for Game Over Screen */
+        #game-over-buttons {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .message-button {
+            padding: 15px 30px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            background-color: #4CAF50;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #388E3C;
+            transition: all 0.1s;
+        }
+        .message-button:hover { background-color: #45A049; }
+        .message-button:active { transform: translateY(5px); box-shadow: none; }
+
+        /* --- CARD COLLECTION STYLES --- */
+        #card-collection-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.9); 
+            z-index: 20;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #card-collection-screen h2 {
+            color: gold;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #card-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        .collection-card {
+            width: 150px;
+            height: auto; 
+            min-height: 120px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+        .collection-card.unlocked {
+            border-color: gold;
+            background: #444;
+        }
+        .collection-card.locked {
+            opacity: 0.3;
+            filter: grayscale(100%);
+        }
+        .collection-card h4 {
+            margin: 5px 0;
+            color: white;
+            font-size: 14px;
+        }
+        .collection-card p {
+            margin: 2px 0;
+            font-size: 10px;
+            color: #ccc;
+        }
+        .collection-card.locked h4 {
+            color: red;
+        }
+        .collection-card .cost-display {
+            font-size: 18px;
+            font-weight: bold;
+            color: purple;
+            margin-top: 5px;
+        }
+
+        /* --- TROPHY ROAD STYLES --- */
+        #trophy-road-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.95); 
+            z-index: 30;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #trophy-road-screen h2 {
+            color: #FFD700;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 30px;
+        }
+        #trophy-road-list {
+            list-style: none;
+            padding: 0;
+            width: 80%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .trophy-road-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #444;
+            border: 2px solid #888;
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            font-size: 16px;
+            color: white;
+        }
+        .trophy-road-item.unlocked-now {
+            border-color: #32CD32; /* Lime green */
+            background: #222;
+        }
+        .trophy-road-item .reward-name {
+            font-weight: bold;
+            color: gold;
+        }
+        .trophy-road-item .trophy-count {
+            color: #FFD700;
+            font-weight: bold;
+        }
+
+        /* --- DECK BUILDER & LEVEL UI --- */
+        #deck-builder-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 40;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #deck-builder-screen h2 {
+            color: #FFD700;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #deck-builder-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        #deck-slots, #deck-card-grid {
+            background: #222;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.6);
+            min-width: 300px;
+        }
+        #deck-slots {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .deck-slot {
+            min-height: 100px;
+            background: #333;
+            border: 2px dashed #555;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 10px;
+            position: relative;
+            color: white;
+            cursor: pointer;
+        }
+        .deck-slot.filled { border-color: gold; }
+        .deck-slot span { font-size: 14px; font-weight: bold; }
+        .deck-slot p { margin: 4px 0 0; font-size: 12px; }
+        .deck-card { 
+            width: 140px;
+            min-height: 110px;
+            background: #2b2b2b;
+            border: 2px solid #444;
+            border-radius: 10px;
+            padding: 10px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .deck-card.unlocked { border-color: #59b300; }
+        .deck-card.locked { opacity: 0.35; cursor: not-allowed; }
+        .deck-card .card-name { font-size: 14px; font-weight: bold; }
+        .deck-card .card-level { font-size: 12px; margin-top: 4px; color: #FFD700; }
+        .deck-card .upgrade-button {
+            margin-top: 8px;
+            padding: 6px 8px;
+            border: none;
+            border-radius: 5px;
+            background: #8a2be2;
+            color: white;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .deck-card .upgrade-button:disabled { background: #555; cursor: not-allowed; }
+        .deck-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .deck-footer .deck-selected {
+            color: #fff;
+            font-size: 16px;
+        }
+        .deck-footer .deck-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .deck-footer .message-button { margin: 0; }
+
+        /* --- FIREBASE AUTH SCREENS --- */
+        #auth-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.95);
+            z-index: 100;
+        }
+
+        #auth-screen.hidden {
+            display: none;
+        }
+
+        .auth-container {
+            background: #1a1a1a;
+            padding: 40px;
+            border-radius: 15px;
+            border: 2px solid #FFD700;
+            max-width: 400px;
+            width: 100%;
+            color: white;
+        }
+
+        .auth-container h2 {
+            text-align: center;
+            color: #FFD700;
+            margin: 0 0 25px;
+            font-size: 24px;
+        }
+
+        .auth-container label {
+            display: block;
+            margin: 15px 0 5px;
+            font-weight: bold;
+            color: #ccc;
+        }
+
+        .auth-container input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #555;
+            border-radius: 5px;
+            background: #222;
+            color: white;
+            box-sizing: border-box;
+        }
+
+        .auth-container button {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #FFD700;
+            color: black;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .auth-container button:hover {
+            background: #FFC700;
+            transform: translateY(-2px);
+        }
+
+        .auth-container button.secondary {
+            background: #555;
+            color: white;
+        }
+
+        .auth-container button.secondary:hover {
+            background: #666;
+        }
+
+        .auth-container .error {
+            color: #ff6b6b;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 5px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        #matchmaking-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.95);
+            z-index: 100;
+        }
+
+        #matchmaking-screen.hidden {
+            display: none;
+        }
+
+        .matchmaking-container {
+            text-align: center;
+            color: white;
+        }
+
+        .matchmaking-container h2 {
+            color: #FFD700;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+
+        .matchmaking-container .loading {
+            font-size: 18px;
+            margin: 20px 0;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .matchmaking-container .match-info {
+            background: rgba(255, 215, 0, 0.1);
+            border: 2px solid #FFD700;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+
+        .matchmaking-container .opponent-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        .matchmaking-container .opponent-info div {
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #555;
+        }
+
+        .matchmaking-container button {
+            padding: 12px 24px;
+            margin: 10px;
+            background: #555;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .matchmaking-container button:hover {
+            background: #666;
+        }
+
+        #player-indicator {
+            position: absolute;
+            top: 12px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #FFD700;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Firebase Auth Screen -->
+<div id="auth-screen">
+    <div class="auth-container">
+        <h2 id="auth-title">Sign In</h2>
+        <div id="auth-error" class="error" style="display: none;"></div>
+        
+        <div id="login-form">
+            <label>Email:</label>
+            <input type="email" id="login-email" placeholder="your@email.com">
+            <label>Password:</label>
+            <input type="password" id="login-password" placeholder="••••••••">
+            <button onclick="handleSignIn()">Sign In</button>
+            <button class="secondary" onclick="toggleAuthForm()">Create Account</button>
+        </div>
+
+        <div id="signup-form" style="display: none;">
+            <label>Email:</label>
+            <input type="email" id="signup-email" placeholder="your@email.com">
+            <label>Username:</label>
+            <input type="text" id="signup-username" placeholder="Your Player Name">
+            <label>Password:</label>
+            <input type="password" id="signup-password" placeholder="••••••••">
+            <label>Confirm Password:</label>
+            <input type="password" id="signup-confirm" placeholder="••••••••">
+            <button onclick="handleSignUp()">Create Account</button>
+            <button class="secondary" onclick="toggleAuthForm()">Back to Sign In</button>
+        </div>
+    </div>
+</div>
+
+<!-- Matchmaking Screen -->
+<div id="matchmaking-screen" class="hidden">
+    <div class="matchmaking-container">
+        <h2>Finding Opponent...</h2>
+        <div class="loading">⚔️ Searching for a worthy opponent</div>
+        <div id="matchmaking-info"></div>
+        <div id="opponent-status"></div>
+        <button onclick="cancelMatchmaking()">Cancel</button>
+    </div>
+</div>
+
+<!-- Player Indicator (shown during game) -->
+<div id="player-indicator" style="display: none;"></div>
+
+<div id="game-container">
+    <div id="main-menu">
+        <h1>Champ Royale</h1>
+        <p>Choose your deck, check your trophies, or jump into battle. The UI is now simplified so you can focus on gameplay.</p>
+        <div class="main-menu-welcome">
+            <span>Deck Builder</span>
+            <span>Card Collection</span>
+            <span>Trophy Road</span>
+            <span>Admin</span>
+            <span>Play</span>
+        </div>
+        <div class="menu-buttons">
+            <button class="menu-button play-button" onclick="startGame()">Play Game ▶</button>
+            <button class="menu-button play-button" onclick="startMatchmaking()" style="grid-column: span 2; background: #1a5f1a; border-color: #00FF00;">Play Multiplayer ⚔️</button>
+            <button class="menu-button" onclick="openDeckBuilder()">Deck Builder 🃏</button>
+            <button class="menu-button" onclick="openCardCollection()">Card Collection 🎴</button>
+            <button class="menu-button" onclick="openTrophyRoad()">Trophy Road 🏆</button>
+            <button class="menu-button" onclick="adminUnlock()">Codes</button>
+            <button class="menu-button" onclick="handleSignOut()" style="grid-column: span 2; background: #5f1a1a; border-color: #FF6B6B;">Sign Out</button>
+        </div>
+    </div>
+
+    
+    <canvas id="gameCanvas" width="400" height="750"></canvas> 
+    <div id="status-panel">🏆 0  💰 0</div>
+    <div id="elixir-bar" data-elixir="5"><div id="elixir-fill"></div></div>
+    
+    <div id="ui-layer" style="position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 420px; display: flex; justify-content: center; gap: 8px;">
+        <div class="card-slot" data-slot-index="0"></div>
+        <div class="card-slot" data-slot-index="1"></div>
+        <div class="card-slot" data-slot-index="2"></div>
+        <div class="card-slot" data-slot-index="3"></div>
+    </div>
+
+    <div id="game-feed">
+        <h3>Battle Log</h3>
+        <div id="game-feed-entries"></div>
+    </div>
+
+    <div id="message">
+        <h1 id="game-result"></h1>
+        <div id="trophy-change" style="font-size: 24px; color: yellow; font-weight: bold; margin-bottom: 20px;"></div>
+        <div id="unlock-message" style="font-size: 20px; color: gold; font-weight: bold; margin-bottom: 20px;"></div>
+        
+        <div id="game-over-buttons">
+            <button class="message-button" onclick="restartGame()">Play Again</button>
+            <button class="message-button" onclick="showCardCollection()">Card Collection 🎴</button>
+        </div>
+    </div>
+    
+    <div id="card-collection-screen">
+        <h2>Card Collection</h2>
+        <div id="card-list">
+            </div>
+        <button class="message-button" style="margin-top: 20px;" onclick="hideCardCollection()">Back to Game Over</button>
+    </div>
+
+    <div id="deck-builder-screen">
+        <h2>Deck Builder & Levels</h2>
+        <div id="deck-builder-row">
+            <div id="deck-slots"></div>
+            <div id="deck-card-grid"></div>
+        </div>
+        <div class="deck-footer">
+            <div class="deck-selected">Selected Cards: <span id="deck-selected-count">0</span>/4</div>
+            <div class="deck-actions">
+                <button class="message-button" onclick="saveDeckConfiguration()">Save Deck</button>
+                <button class="message-button" onclick="hideDeckBuilder()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="trophy-road-screen">
+        <h2>🏆 The Trophy Road 🏆</h2>
+        <div style="text-align: center; color: white; margin-bottom: 15px;">
+            Your Trophies: <span id="trophy-road-current-trophies" style="color: gold; font-weight: bold;">0</span>
+        </div>
+        <ul id="trophy-road-list">
+            </ul>
+        <button class="message-button" style="margin-top: 20px;" onclick="hideTrophyRoad()">Close</button>
+    </div>
+</div>
+
+
+<script>
+// ============= FIREBASE CONFIGURATION =============
+// TODO: Replace with your Firebase project credentials
+const firebaseConfig = {
+  apiKey: "AIzaSyBRPvzset89GgBJ8kgvi9m2LlDeXSwzamI",
+  authDomain: "champ-royale.firebaseapp.com",
+  databaseURL: "https://champ-royale-default-rtdb.firebaseio.com",
+  projectId: "champ-royale",
+  storageBucket: "champ-royale.firebasestorage.app",
+  messagingSenderId: "367325603989",
+  appId: "1:367325603989:web:6115b782b4dd31d556139c",
+  measurementId: "G-7YS6N1HMET"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const database = firebase.database();
+
+// ============= MULTIPLAYER STATE =============
+let currentUser = null;
+let currentMatch = null;
+let isMultiplayer = false;
+let isLocalPlayer = true; // true = player (bottom), false = enemy (top)
+let opponentUser = null;
+let matchId = null;
+let gameStateRef = null;
+let playerRole = 'player'; // 'player' or 'opponent'
+
+// ============= AUTH HANDLERS =============
+function toggleAuthForm() {
+    const loginForm = document.getElementById('login-form');
+    const signupForm = document.getElementById('signup-form');
+    loginForm.style.display = loginForm.style.display === 'none' ? 'block' : 'none';
+    signupForm.style.display = signupForm.style.display === 'none' ? 'block' : 'none';
+}
+
+async function handleSignUp() {
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    const confirm = document.getElementById('signup-confirm').value;
+    const username = document.getElementById('signup-username').value;
+
+    if (!email || !password || !confirm || !username) {
+        showAuthError('Please fill in all fields');
+        return;
+    }
+
+    if (password !== confirm) {
+        showAuthError('Passwords do not match');
+        return;
+    }
+
+    if (password.length < 6) {
+        showAuthError('Password must be at least 6 characters');
+        return;
+    }
+
+    try {
+        const result = await auth.createUserWithEmailAndPassword(email, password);
+        await database.ref(`users/${result.user.uid}`).set({
+            username: username,
+            email: email,
+            trophies: 0,
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+        });
+        currentUser = result.user;
+        hideAuthScreen();
+        showMatchmakingOptions();
+    } catch (error) {
+        showAuthError(error.message);
+    }
+}
+
+async function handleSignIn() {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+
+    if (!email || !password) {
+        showAuthError('Please enter email and password');
+        return;
+    }
+
+    try {
+        const result = await auth.signInWithEmailAndPassword(email, password);
+        currentUser = result.user;
+        hideAuthScreen();
+        showMatchmakingOptions();
+    } catch (error) {
+        showAuthError(error.message);
+    }
+}
+
+function showAuthError(message) {
+    const errorDiv = document.getElementById('auth-error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => errorDiv.style.display = 'none', 5000);
+}
+
+function hideAuthScreen() {
+    document.getElementById('auth-screen').classList.add('hidden');
+}
+
+function showMatchmakingOptions() {
+    document.getElementById('main-menu').style.display = 'flex';
+}
+
+// ============= MATCHMAKING HANDLERS =============
+async function startMatchmaking() {
+    showMatchmakingScreen();
+    
+    try {
+        // Create a pending match request
+        const matchRequest = {
+            playerId: currentUser.uid,
+            username: (await database.ref(`users/${currentUser.uid}/username`).once('value')).val(),
+            trophies: (await database.ref(`users/${currentUser.uid}/trophies`).once('value')).val() || 0,
+            status: 'waiting',
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+        };
+
+        const newMatchRef = database.ref('matchmaking').push(matchRequest);
+        const myMatchRequestId = newMatchRef.key;
+
+        // Listen for other players
+        let listenerSet = false;
+        const matchListener = database.ref('matchmaking').on('value', async (snapshot) => {
+            if (!listenerSet) {
+                listenerSet = true;
+                const requests = snapshot.val() || {};
+                
+                for (const [requestId, request] of Object.entries(requests)) {
+                    if (requestId !== myMatchRequestId && request.status === 'waiting') {
+                        // Found an opponent!
+                        listenerSet = false;
+                        database.ref('matchmaking').off('value');
+                        
+                        // Create match room
+                        await createMatch(currentUser.uid, request.playerId);
+                        
+                        // Remove match requests
+                        await database.ref(`matchmaking/${myMatchRequestId}`).remove();
+                        await database.ref(`matchmaking/${requestId}`).remove();
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Timeout after 30 seconds
+        setTimeout(() => {
+            if (currentMatch === null) {
+                database.ref('matchmaking').off('value');
+                database.ref(`matchmaking/${myMatchRequestId}`).remove();
+                alert('No opponent found. Try again!');
+                cancelMatchmaking();
+            }
+        }, 30000);
+
+    } catch (error) {
+        console.error('Matchmaking error:', error);
+        alert('Error starting matchmaking: ' + error.message);
+    }
+}
+
+async function createMatch(player1Id, player2Id) {
+    try {
+        const matchData = {
+            player1: {
+                id: player1Id,
+                hand: [],
+                elixir: 5,
+                towerHP: { main: 1800, left: 1800, right: 1800 }
+            },
+            player2: {
+                id: player2Id,
+                hand: [],
+                elixir: 5,
+                towerHP: { main: 1800, left: 1800, right: 1800 }
+            },
+            entities: [],
+            status: 'active',
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+            startedAt: firebase.database.ServerValue.TIMESTAMP
+        };
+
+        const newMatchRef = database.ref('matches').push(matchData);
+        matchId = newMatchRef.key;
+        currentMatch = matchData;
+
+        // Determine player role
+        if (currentUser.uid === player1Id) {
+            playerRole = 'player1';
+            isLocalPlayer = true;
+        } else {
+            playerRole = 'player2';
+            isLocalPlayer = false;
+        }
+
+        isMultiplayer = true;
+        hideMatchmakingScreen();
+        startMultiplayerGame();
+
+        // Listen for game state changes
+        gameStateRef = database.ref(`matches/${matchId}`);
+        gameStateRef.on('value', (snapshot) => {
+            syncGameState(snapshot.val());
+        });
+
+    } catch (error) {
+        console.error('Match creation error:', error);
+        alert('Error creating match: ' + error.message);
+    }
+}
+
+function showMatchmakingScreen() {
+    document.getElementById('matchmaking-screen').classList.remove('hidden');
+    document.getElementById('main-menu').style.display = 'none';
+}
+
+function hideMatchmakingScreen() {
+    document.getElementById('matchmaking-screen').classList.add('hidden');
+}
+
+function cancelMatchmaking() {
+    hideMatchmakingScreen();
+    showMatchmakingOptions();
+}
+
+// ============= GAME STATE SYNCHRONIZATION =============
+async function syncGameState(matchState) {
+    if (!matchState) return;
+    
+    // Sync opponent entities (units, structures, spells)
+    if (matchState.entities) {
+        // This will be handled in the main game loop
+        currentMatch.entities = matchState.entities;
+    }
+
+    // Sync tower HP
+    const opponentRole = playerRole === 'player1' ? 'player2' : 'player1';
+    if (matchState[opponentRole]) {
+        const opponentData = matchState[opponentRole];
+        // Update towers from opponent data
+    }
+
+    // Check for match end
+    if (matchState.status === 'finished') {
+        endMultiplayerGame(matchState.winner);
+    }
+}
+
+async function broadcastGameState() {
+    if (!matchId) return;
+
+    try {
+        const update = {};
+        update[`matches/${matchId}/${playerRole}/elixir`] = currentElixir;
+        update[`matches/${matchId}/${playerRole}/towerHP`] = {
+            main: towers.find(t => t.isKing && t.team === 'player')?.hp || 0,
+            left: towers.find(t => !t.isKing && t.team === 'player' && t.x < 200)?.hp || 0,
+            right: towers.find(t => !t.isKing && t.team === 'player' && t.x >= 200)?.hp || 0
+        };
+
+        // Sync all entities
+        const entityData = entities.map(e => ({
+            id: e.id || Math.random(),
+            type: e.type,
+            x: e.x,
+            y: e.y,
+            hp: e.hp,
+            team: e.team
+        }));
+        update[`matches/${matchId}/${playerRole}/entities`] = entityData;
+
+        await database.ref().update(update);
+    } catch (error) {
+        console.error('Broadcast error:', error);
+    }
+}
+
+function endMultiplayerGame(winner) {
+    isMultiplayer = false;
+    gameStateRef.off('value');
+
+    if (currentUser.uid === winner) {
+        alert('🏆 You Won!');
+        // Update trophies
+        database.ref(`users/${currentUser.uid}/trophies`).transaction(val => (val || 0) + 50);
+    } else {
+        alert('💔 You Lost');
+        database.ref(`users/${currentUser.uid}/trophies`).transaction(val => Math.max(0, (val || 0) - 10));
+    }
+
+    // Clean up
+    database.ref(`matches/${matchId}`).remove();
+    matchId = null;
+    currentMatch = null;
+}
+
+function startMultiplayerGame() {
+    // Show player indicator
+    const indicator = document.getElementById('player-indicator');
+    indicator.style.display = 'block';
+    indicator.textContent = `Playing as: ${playerRole === 'player1' ? 'Player 1' : 'Player 2'}`;
+
+    // Restore game state from single-player
+    gameStarted = true;
+    gameOver = false;
+    currentTime = 0;
+    currentArena = ARENAS[getCurrentArenaTier()];
+    currentElixir = currentArena.startingElixir;
+    
+    // Initialize game entities
+    entities = [];
+    towers = [];
+    visualEffects = [];
+    damageTexts = [];
+    
+    // Create towers
+    towers.push(new Tower(GAME_WIDTH / 2, GAME_HEIGHT - 50, 'player', true));
+    towers.push(new Tower(75, GAME_HEIGHT - 50, 'player', false));
+    towers.push(new Tower(GAME_WIDTH - 75, GAME_HEIGHT - 50, 'player', false));
+    
+    towers.push(new Tower(GAME_WIDTH / 2, 50, 'enemy', true));
+    towers.push(new Tower(75, 50, 'enemy', false));
+    towers.push(new Tower(GAME_WIDTH - 75, 50, 'enemy', false));
+
+    mainGameLoop();
+}
+
+// ============= SIGN OUT =============
+function handleSignOut() {
+    if (gameStateRef) {
+        gameStateRef.off('value');
+    }
+    auth.signOut().then(() => {
+        currentUser = null;
+        document.getElementById('auth-screen').classList.remove('hidden');
+        document.getElementById('main-menu').style.display = 'none';
+        document.getElementById('message').style.display = 'none';
+        gameStarted = false;
+    });
+}
+
+// ============= CHECK AUTH STATE =============
+auth.onAuthStateChanged((user) => {
+    if (user) {
+        currentUser = user;
+        hideAuthScreen();
+        showMatchmakingOptions();
+    } else {
+        document.getElementById('auth-screen').classList.remove('hidden');
+    }
+});
+
+/** GAME CONFIGURATION **/
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const GAME_WIDTH = 400;
+const GAME_HEIGHT = 750;
+const gameResultText = document.getElementById('game-result');
+const messageScreen = document.getElementById('message');
+const canvasElement = document.getElementById('gameCanvas'); 
+const uiLayer = document.getElementById('ui-layer');
+const elixirBar = document.getElementById('elixir-bar'); 
+const gameFeedContainer = document.getElementById('game-feed-entries');
+const statusPanel = document.getElementById('status-panel');
+const trophyChangeDisplay = document.getElementById('trophy-change');
+const unlockMessageDisplay = document.getElementById('unlock-message');
+const cardCollectionScreen = document.getElementById('card-collection-screen');
+const cardListContainer = document.getElementById('card-list');
+const trophyRoadScreen = document.getElementById('trophy-road-screen');
+const trophyRoadList = document.getElementById('trophy-road-list');
+const trophyRoadCurrentTrophies = document.getElementById('trophy-road-current-trophies');
+const deckBuilderScreen = document.getElementById('deck-builder-screen');
+const mainMenu = document.getElementById('main-menu');
+const topUI = document.getElementById('top-ui');
+
+function SPEC_NAME(cardKey) {
+    if (CARD_SPECS[cardKey] && CARD_SPECS[cardKey].name) {
+        return CARD_SPECS[cardKey].name;
+    }
+    return cardKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+const deckSlotsContainer = document.getElementById('deck-slots');
+const deckCardGrid = document.getElementById('deck-card-grid');
+const deckSelectedCount = document.getElementById('deck-selected-count');
+
+
+// Game State
+let elixir = 5;
+const MAX_ELIXIR = 10;
+let enemyElixir = 5; 
+const ENEMY_MAX_ELIXIR = 10;
+let startingElixir = 5;
+let startingEnemyElixir = 5;
+let selectedCard = null;
+let gameOver = false; 
+let gameStarted = false; 
+let elixirInterval, enemySpawnInterval;
+let currentArena; 
+
+// --- GLOBAL SPEED MODIFIER ---
+const GLOBAL_SPEED_MODIFIER = 0.4; 
+// -----------------------------
+
+// --- TROPHY & COIN PERSISTENCE (LOCAL STORAGE) ---
+let trophies = parseInt(localStorage.getItem('champRoyaleTrophies')) || 0; 
+let coins = parseInt(localStorage.getItem('champRoyaleCoins')) || 0;
+let unlockedCardsStore = JSON.parse(localStorage.getItem('unlockedCards')) || [];
+let redeemedCodes = JSON.parse(localStorage.getItem('champRoyaleRedeemedCodes')) || [];
+// ------------------------------------------
+
+// Card State
+let DECK = [];
+let HAND = [];
+const HAND_SIZE = 4;
+const DECK_SIZE = 8;
+let entities = [];
+let towers = [];
+let visualEffects = []; 
+let damageTexts = []; 
+
+// Arena Configuration 
+const ARENAS = [
+    { name: "Training Camp", trophies: 0, grassColor: "#5D9E56", riverColor: "#44AAFF", bridgeColor: "#8B4513", elixirRate: 1300, speedModifier: 1.0, enemySpawnRate: 4000, color1: '#111', color2: '#555', startingElixir: 5 },
+    { name: "Barbarian Bowl", trophies: 20, grassColor: "#F4A460", riverColor: "#DEB887", bridgeColor: "#CD853F", elixirRate: 1000, speedModifier: 1.2, enemySpawnRate: 3500, color1: '#8B4513', color2: '#A0522D', startingElixir: 6 },
+    { name: "Frozen Peak", trophies: 50, grassColor: "#ADD8E6", riverColor: "#FFFFFF", bridgeColor: "#CCCCCC", elixirRate: 1300, speedModifier: 0.8, enemySpawnRate: 4000, color1: '#E0FFFF', color2: '#B0E0E6', startingElixir: 5 },
+    { name: "Lava Hound's Pit", trophies: 100, grassColor: "#8B0000", riverColor: "#FF4500", bridgeColor: "#555555", elixirRate: 1000, speedModifier: 1.0, enemySpawnRate: 3000, color1: '#440000', color2: '#AA0000', startingElixir: 7 }, 
+    { name: "P.E.K.K.A's Playhouse", trophies: 150, grassColor: "#191970", riverColor: "#4682B4", bridgeColor: "#708090", elixirRate: 1500, speedModifier: 0.7, enemySpawnRate: 5000, color1: '#000080', color2: '#4169E1', startingElixir: 8 },
+    { name: "Electro Valley", trophies: 200, grassColor: "#333366", riverColor: "#4B0082", bridgeColor: "#8A2BE2", elixirRate: 1200, speedModifier: 1.0, enemySpawnRate: 3800, color1: '#00FFFF', color2: '#4169E1', startingElixir: 5 },
+    // --- NEW ARENAS ---
+    { name: "Sparky's Junkyard", trophies: 250, grassColor: "#696969", riverColor: "#B0C4DE", bridgeColor: "#4F4F4F", elixirRate: 1100, speedModifier: 1.1, enemySpawnRate: 3200, color1: '#2F4F4F', color2: '#808080', startingElixir: 6 },
+    { name: "Legendary Arena", trophies: 300, grassColor: "#FFD700", riverColor: "#FF4500", bridgeColor: "#A52A2A", elixirRate: 800, speedModifier: 1.3, enemySpawnRate: 2500, color1: '#330033', color2: '#660066', startingElixir: 10 }
+    // ------------------
+];
+
+// --- TROPHY ROAD REWARDS ---
+const TROPHY_ROAD_REWARDS = [
+    { trophies: 0, rewardType: 'card', cardKey: 'knight', name: 'Starting Card: Knight' },
+    { trophies: 0, rewardType: 'card', cardKey: 'archer', name: 'Starting Card: Archer' },
+    { trophies: 0, rewardType: 'card', cardKey: 'fireball', name: 'Starting Card: Fireball' },
+    { trophies: 10, rewardType: 'card', cardKey: 'goblin_gang', name: 'New Card: Goblin Gang' }, 
+    { trophies: 20, rewardType: 'card', cardKey: 'hog_rider', name: 'New Card: Hog Rider' },
+    { trophies: 25, rewardType: 'card', cardKey: 'barbarian_hut', name: 'New Card: Barbarian Hut' },
+    { trophies: 30, rewardType: 'card', cardKey: 'arrows', name: 'New Card: Arrows' },
+    { trophies: 30, rewardType: 'card', cardKey: 'air_spirit', name: 'New Card: Heal Spirit' },
+    { trophies: 35, rewardType: 'card', cardKey: 'miner', name: 'New Card: Miner' },
+    { trophies: 40, rewardType: 'card', cardKey: 'executioner', name: 'New Card: Executioner' },
+    { trophies: 45, rewardType: 'card', cardKey: 'witch', name: 'New Card: Witch' },
+    { trophies: 50, rewardType: 'card', cardKey: 'water_spirit', name: 'New Card: Water Spirit' },
+    { trophies: 50, rewardType: 'card', cardKey: 'balloon', name: 'New Card: Balloon' },
+    { trophies: 55, rewardType: 'card', cardKey: 'zappies', name: 'New Card: Zappies' },
+    { trophies: 60, rewardType: 'card', cardKey: 'prince', name: 'New Card: Prince' },
+    { trophies: 65, rewardType: 'card', cardKey: 'x_bow', name: 'New Card: X-Bow' },
+    { trophies: 90, rewardType: 'card', cardKey: 'royal_recruits', name: 'New Card: Royal Recruits' },
+    { trophies: 120, rewardType: 'card', cardKey: 'inferno_dragon', name: 'New Card: Inferno Dragon' },
+    { trophies: 140, rewardType: 'card', cardKey: 'dark_prince', name: 'New Card: Dark Prince' },
+    { trophies: 180, rewardType: 'card', cardKey: 'rocket', name: 'New Card: Rocket' },
+    // --- NEW CARD UNLOCKS ---
+    { trophies: 220, rewardType: 'card', cardKey: 'royal_giant', name: 'New Card: Royal Giant' },
+    { trophies: 270, rewardType: 'card', cardKey: 'three_musketeers', name: 'New Card: Three Musketeers' },
+];
+
+
+// --- CARD DEFINITIONS ---
+const CARD_SPECS = {
+    // BASE UNITS (UNLOCKED AT 0)
+    'knight': { type: 'unit', cost: 3, hp: 400, dmg: 40, speed: 1.5, radius: 10, color: '#4488FF', range: 20, target: 'ground', name: 'Knight', isFlying: false, shape: 'circle' },
+    'giant':  { type: 'unit', cost: 5, hp: 1200, dmg: 50, speed: 0.8, radius: 15, color: '#224488', range: 20, target: 'buildings', name: 'Giant', isFlying: false, shape: 'circle' },
+    'hog_rider': { type: 'unit', cost: 4, hp: 500, dmg: 60, speed: 2.5, radius: 12, color: '#FF69B4', range: 20, target: 'buildings', name: 'Hog Rider', isFlying: false, shape: 'square' },
+    'miner': { type: 'unit', cost: 3, hp: 450, dmg: 55, speed: 2.4, radius: 10, color: '#8B4513', range: 20, target: 'buildings', name: 'Miner', isFlying: false, shape: 'circle' },
+    'mini_pekka': { type: 'unit', cost: 4, hp: 600, dmg: 150, speed: 1.8, radius: 12, color: '#00FFFF', range: 20, target: 'ground', name: 'Mini P.E.K.K.A.', isFlying: false, shape: 'square' },
+    'skeleton_army': { type: 'unit', cost: 3, hp: 40, dmg: 20, speed: 2.5, radius: 5, color: '#AAAAAA', range: 5, target: 'ground', name: 'Skele Army', spawnCount: 10, isFlying: false, shape: 'circle' },
+    'valkyrie': { type: 'unit', cost: 4, hp: 800, dmg: 80, speed: 1.2, radius: 12, color: '#FFA500', range: 20, target: 'ground', name: 'Valkyrie', isFlying: false, shape: 'circle', isSplash: true, splashRadius: 40 }, 
+    'goblin': { type: 'unit', cost: 1, hp: 100, dmg: 30, speed: 3.0, radius: 8, color: '#00AA00', range: 10, target: 'ground', name: 'Goblin', isFlying: false, shape: 'diamond' },
+    'spear_goblin': { type: 'unit', cost: 1, hp: 60, dmg: 15, speed: 3.0, radius: 8, color: '#00DD00', range: 70, target: 'air_ground', name: 'Spear Goblin', isFlying: false, shape: 'diamond', projectile: { color: 'green', size: 3 } },
+    'barbarian': { type: 'unit', cost: 1, hp: 300, dmg: 35, speed: 1.5, radius: 10, color: '#FF4500', range: 20, target: 'ground', name: 'Barbarian', isFlying: false, shape: 'square' }, 
+    'musketeer': { type: 'unit', cost: 4, hp: 300, dmg: 70, speed: 1.0, radius: 10, color: '#CC00CC', range: 120, target: 'air_ground', name: 'Musketeer', isFlying: false, shape: 'diamond', projectile: { color: 'red', size: 5 } }, // Three Musketeers Component
+
+    // RANGED UNITS (Attack Air/Ground)
+    'archer': { type: 'unit', cost: 2, hp: 150, dmg: 30, speed: 2.0, radius: 8, color: '#88CCFF', range: 100, target: 'air_ground', name: 'Archer', isFlying: false, shape: 'diamond', projectile: { color: 'green', size: 3 } },
+
+    // FLYING UNITS
+    'minions': { type: 'unit', cost: 3, hp: 100, dmg: 40, speed: 3.0, radius: 7, color: '#8B008B', range: 20, target: 'air_ground', name: 'Minions', spawnCount: 3, isFlying: true, shape: 'rectangle' },
+    'zappies': { type: 'unit', cost: 4, hp: 220, dmg: 35, speed: 1.4, radius: 9, color: '#00FFFF', range: 40, target: 'ground', name: 'Zappies', spawnCount: 3, isFlying: false, shape: 'circle', stunDuration: 90 },
+    'baby_dragon': { type: 'unit', cost: 4, hp: 700, dmg: 60, speed: 1.5, radius: 14, color: '#FFD700', range: 60, target: 'air_ground', name: 'Baby Dragon', isFlying: true, shape: 'diamond', projectile: { color: 'orange', size: 8 }, isSplash: true, splashRadius: 30 }, 
+    'executioner': { type: 'unit', cost: 5, hp: 700, dmg: 70, speed: 1.3, radius: 12, color: '#663300', range: 80, target: 'air_ground', name: 'Executioner', isFlying: false, shape: 'square', isSplash: true, splashRadius: 30 },
+    'witch': { type: 'unit', cost: 5, hp: 500, dmg: 40, speed: 1.0, radius: 10, color: '#4B0082', range: 100, target: 'air_ground', name: 'Witch', isFlying: false, shape: 'diamond', projectile: { color: '#D8BFD8', size: 5 } },
+    'balloon': { type: 'unit', cost: 5, hp: 900, dmg: 400, speed: 0.5, radius: 18, color: '#B0C4DE', range: 20, target: 'buildings', name: 'Balloon', isFlying: true, shape: 'circle' },
+    'x_bow': { type: 'structure', cost: 6, hp: 900, dmg: 80, range: 220, target: 'buildings', name: 'X-Bow', lifetime: 1200, isFlying: false, shape: 'square', projectile: { color: '#FF4500', size: 6 } },
+    
+    // SPIRIT UNITS
+    'air_spirit': { type: 'unit', cost: 1, hp: 100, dmg: 0, heal: 70, speed: 4.5, baseSpeed: 2.2, radius: 8, color: '#87CEEB', range: 80, target: 'air_ground', name: 'Heal Spirit', isFlying: true, shape: 'diamond', projectile: { color: 'lightgreen', size: 3 } },
+    
+    // *** UNLOCKED/SPECIAL UNITS ***
+    'prince': { type: 'unit', cost: 5, hp: 800, dmg: 100, speed: 1.8, radius: 12, color: '#008000', range: 20, target: 'ground', name: 'Prince', isFlying: false, shape: 'square', charge: { multiplier: 2.0, duration: 180, minDistance: 200 } },
+    'dark_prince': { type: 'unit', cost: 4, hp: 900, dmg: 90, speed: 1.85, radius: 12, color: '#333333', range: 20, target: 'ground', name: 'Dark Prince', isFlying: false, shape: 'square', charge: { multiplier: 2.0, duration: 180, minDistance: 180 }, isSplash: true, splashRadius: 40 },
+    'royal_recruits': { type: 'unit', cost: 7, hp: 450, dmg: 35, speed: 1.2, radius: 10, color: '#8B0000', range: 20, target: 'ground', name: 'Royal Recruits', spawnCount: 6, isFlying: false, shape: 'square' }, 
+    'inferno_dragon': { type: 'unit', cost: 4, hp: 800, dmg: 30, speed: 1.5, radius: 12, color: '#FF6347', range: 120, target: 'air_ground', name: 'Inferno Dragon', isFlying: true, shape: 'diamond', projectile: { color: 'red', size: 5 }, damageScale: { initial: 1, max: 10, duration: 90 } }, 
+    'goblin_gang': { type: 'unit', cost: 3, hp: 100, dmg: 30, speed: 3.0, radius: 8, color: '#00AA00', range: 10, target: 'ground', name: 'Goblin Gang', spawn: ['goblin', 'goblin', 'goblin', 'spear_goblin', 'spear_goblin', 'spear_goblin'], isFlying: false, shape: 'diamond' }, 
+    // --- NEW UNITS ---
+    'royal_giant': { type: 'unit', cost: 6, hp: 1500, dmg: 60, speed: 0.8, radius: 18, color: '#D2B48C', range: 150, target: 'buildings', name: 'Royal Giant', isFlying: false, shape: 'circle', projectile: { color: 'gray', size: 6 } },
+    'three_musketeers': { type: 'unit', cost: 9, hp: 300, dmg: 70, speed: 1.0, radius: 10, color: '#CC00CC', range: 120, target: 'air_ground', name: '3 Musketeers', spawnCount: 3, isFlying: false, shape: 'diamond', projectile: { color: 'red', size: 5 } },
+
+
+    // STRUCTURES
+    'cannon': { type: 'structure', cost: 3, hp: 700, dmg: 60, range: 100, target: 'ground', name: 'Cannon', lifetime: 900, isFlying: false, shape: 'square', projectile: { color: 'gray', size: 4 } },
+    'tesla': { type: 'structure', cost: 4, hp: 850, dmg: 75, range: 120, target: 'air_ground', name: 'Tesla', lifetime: 1200, isFlying: false, shape: 'diamond', projectile: { type: 'zap', color: 'white' } },
+    'goblin_drill': { type: 'structure', cost: 4, hp: 600, dmg: 0, range: 0, target: 'none', name: 'Goblin Drill', lifetime: 1800, isFlying: false, shape: 'circle', spawnUnit: 'goblin', spawnInterval: 180, spawnCount: 1, color: '#8B4513' }, 
+    'barbarian_hut': { type: 'structure', cost: 7, hp: 1200, dmg: 0, range: 0, target: 'none', name: 'Barbarian Hut', lifetime: 2400, isFlying: false, shape: 'square', spawnUnit: 'barbarian', spawnInterval: 300, spawnCount: 2, color: '#A0522D' }, 
+    'water_spirit': { type: 'unit', cost: 1, hp: 250, dmg: 0, speed: 4.0, baseSpeed: 2.0, radius: 8, color: '#00BFFF', range: 70, target: 'none', name: 'Water Spirit', isFlying: true, shape: 'diamond', slowFactor: 0.5 },
+    
+    // SPELLS
+    'fireball': { type: 'spell', cost: 4, dmg: 300, hp: 0, radius: 50, name: 'Fireball', target: 'air_ground' },
+    'arrows': { type: 'spell', cost: 3, dmg: 120, hp: 0, radius: 80, name: 'Arrows', target: 'air_ground' },
+    'goblin_barrel': { type: 'spell', cost: 3, dmg: 20, hp: 0, radius: 10, name: 'Goblin Barrel', spawnCount: 3, unitType: 'goblin', target: 'air_ground' },
+    'freeze': { type: 'spell', cost: 4, dmg: 0, hp: 0, duration: 180, radius: 70, name: 'Freeze', target: 'air_ground' },
+    'rocket': { type: 'spell', cost: 6, dmg: 1000, hp: 0, radius: 60, name: 'Rocket', target: 'air_ground' },
+    'lightning': { type: 'spell', cost: 6, dmg: 800, hp: 0, radius: 70, name: 'Lightning', target: 'air_ground', hits: 3 },
+    'royal_delivery': { type: 'spell', cost: 3, dmg: 150, hp: 0, radius: 40, name: 'Royal Delivery', target: 'air_ground', spawnUnit: 'royal_recruits', spawnCount: 1 }, 
+};
+
+// Initial Card Setup (now based on TROPHY_ROAD_REWARDS)
+function initializeAvailableCards() {
+    let baseCards = TROPHY_ROAD_REWARDS.filter(r => r.trophies === 0 && r.rewardType === 'card').map(r => r.cardKey);
+    
+    // If local storage is empty, initialize it with base cards
+    if (unlockedCardsStore.length === 0) {
+        unlockedCardsStore = [...new Set(baseCards)]; // Use Set to ensure uniqueness
+        localStorage.setItem('unlockedCards', JSON.stringify(unlockedCardsStore));
+    }
+    
+    // Add all cards unlocked by current trophies
+    TROPHY_ROAD_REWARDS.forEach(r => {
+        if (r.rewardType === 'card' && r.trophies <= trophies && !unlockedCardsStore.includes(r.cardKey)) {
+             unlockedCardsStore.push(r.cardKey);
+        }
+    });
+
+    // Final check for uniqueness and return the array
+    return [...new Set(unlockedCardsStore)];
+}
+
+let AVAILABLE_CARDS = initializeAvailableCards();
+
+const SPEED_CATEGORY_MULTIPLIER = {
+    very_slow: 0.55,
+    slow: 0.8,
+    medium: 1.0,
+    fast: 1.4,
+    very_fast: 1.8
+};
+
+function getSpeedCategory(speed) {
+    if (speed <= 0.7) return 'very_slow';
+    if (speed <= 1.0) return 'slow';
+    if (speed <= 1.8) return 'medium';
+    if (speed <= 2.5) return 'fast';
+    return 'very_fast';
+}
+
+function getSpeedMultiplier(category) {
+    return SPEED_CATEGORY_MULTIPLIER[category] || 1.0;
+}
+
+const MAX_LEVEL = 10;
+const LEVEL_UP_COST = 20;
+let cardLevels = JSON.parse(localStorage.getItem('champRoyaleCardLevels')) || {};
+let towerLevels = JSON.parse(localStorage.getItem('champRoyaleTowerLevels')) || { player: 1, enemy: 1 };
+let playerDeck = JSON.parse(localStorage.getItem('champRoyalePlayerDeck')) || [];
+let deckSelection = [];
+
+function getCardLevel(cardKey) {
+    return Math.max(1, Math.min(MAX_LEVEL, cardLevels[cardKey] || 1));
+}
+
+function getTowerLevel(team) {
+    return Math.max(1, Math.min(MAX_LEVEL, towerLevels[team] || 1));
+}
+
+function getLevelMultiplier(level) {
+    return 1 + (level - 1) * 0.12;
+}
+
+function validatePlayerDeck() {
+    const playableCards = AVAILABLE_CARDS.filter(c => c !== 'goblin' && c !== 'spear_goblin' && c !== 'barbarian' && c !== 'musketeer');
+    playerDeck = [...new Set(playerDeck.filter(key => playableCards.includes(key)))];
+    while (playerDeck.length < DECK_SIZE && playableCards.length > 0) {
+        const next = playableCards[playerDeck.length % playableCards.length];
+        if (!playerDeck.includes(next)) playerDeck.push(next);
+        else break;
+    }
+    if (playerDeck.length > DECK_SIZE) playerDeck = playerDeck.slice(0, DECK_SIZE);
+    if (playerDeck.length < DECK_SIZE && playableCards.length > 0) {
+        const fill = playableCards.filter(key => !playerDeck.includes(key)).slice(0, DECK_SIZE - playerDeck.length);
+        playerDeck = [...playerDeck, ...fill];
+    }
+}
+
+function ensureLevelDefaults() {
+    AVAILABLE_CARDS.forEach(key => {
+        if (!cardLevels[key]) cardLevels[key] = 1;
+    });
+    if (!towerLevels.player) towerLevels.player = 1;
+    if (!towerLevels.enemy) towerLevels.enemy = 1;
+    validatePlayerDeck();
+}
+
+ensureLevelDefaults();
+
+
+/** CLASSES (Barbarian unit is added to the system) **/
+
+class DamageText {
+    constructor(x, y, damage, isCritical = false) {
+        this.x = x;
+        this.y = y;
+        this.damage = Math.round(damage);
+        this.lifetime = 45; 
+        this.velocityY = -0.5;
+        this.color = isCritical ? 'yellow' : 'white';
+        this.fontSize = isCritical ? 16 : 12;
+    }
+
+    update() {
+        this.lifetime--;
+        this.y += this.velocityY;
+        this.velocityY *= 0.95; 
+        if (this.lifetime <= 0) this.dead = true;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.font = `${this.fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = this.lifetime / 45; 
+        ctx.fillText(this.damage, this.x, this.y);
+        ctx.globalAlpha = 1;
+    }
+}
+
+class Entity {
+    constructor(x, y, team, hp, radius, color, isFlying = false, shape = 'circle') {
+        this.x = x;
+        this.y = y;
+        this.team = team; 
+        this.hp = hp;
+        this.maxHp = hp;
+        this.radius = radius;
+        this.color = color;
+        this.dead = false;
+        this.frozen = false;
+        this.isFlying = isFlying;
+        this.shape = shape;
+    }
+    
+    takeDamage(damage, isCharged = false) {
+        const damageAmount = Math.max(0, damage);
+        this.hp -= damageAmount;
+        
+        const dyOffset = (this instanceof Tower || this instanceof Structure) ? this.radius : -this.radius;
+        damageTexts.push(new DamageText(this.x, this.y + dyOffset, damageAmount, isCharged || damageAmount >= 100));
+
+        if (this instanceof Tower && this.isKing && !this.kingActivated) {
+            this.kingActivated = true;
+            this.activationTimer = 120;
+            if (typeof this.cooldown !== 'undefined') this.cooldown = 0;
+            addGameFeedMessage(this.team === 'player' ? 'User' : 'Bot', 'King Tower activated!');
+            visualEffects.push(new VisualEffect(this.x, this.y, 'rgba(255, 255, 0, 0.8)', 20, 30, null, 'area'));
+        }
+
+        if (this.hp <= 0) {
+            this.dead = true;
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        
+        // Draw based on Shape
+        if (this.shape === 'circle') {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (this.shape === 'square') {
+            ctx.fillRect(this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+        } else if (this.shape === 'diamond') {
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y - this.radius);
+            ctx.lineTo(this.x + this.radius, this.y);
+            ctx.lineTo(this.x, this.y + this.radius);
+            ctx.lineTo(this.x - this.radius, this.y);
+            ctx.closePath();
+            ctx.fill();
+        } else if (this.shape === 'rectangle') {
+            ctx.fillRect(this.x - this.radius * 1.5, this.y - this.radius * 0.5, this.radius * 3, this.radius);
+        }
+        
+        // Draw Frozen effect
+        if (this.frozen) {
+            ctx.strokeStyle = '#ADD8E6';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius + 3, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        
+        // Draw Flying indicator
+        if (this.isFlying) {
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y + this.radius + 5, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // HP Bar
+        const hpPct = this.hp / this.maxHp;
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x - 15, this.y - this.radius - 10, 30, 5);
+        ctx.fillStyle = '#0f0';
+        ctx.fillRect(this.x - 15, this.y - this.radius - 10, 30 * hpPct, 5);
+        
+        // Draw current HP value
+        ctx.fillStyle = 'white';
+        ctx.font = '8px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(Math.ceil(this.hp), this.x, this.y - this.radius - 12);
+
+        if (this instanceof Unit || this instanceof Structure || this instanceof Tower) {
+            let entityName = '';
+            if (this instanceof Tower) {
+                entityName = this.isKing ? 'King Tower' : 'Princess Tower';
+            } else if (this.type && CARD_SPECS[this.type]) {
+                entityName = CARD_SPECS[this.type].name;
+            }
+            if (entityName) {
+                ctx.fillStyle = 'white';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(entityName, this.x, this.y - this.radius - 18);
+            }
+        }
+    }
+}
+
+
+class Unit extends Entity {
+    constructor(type, x, y, team) {
+        const s = CARD_SPECS[type];
+        const level = getCardLevel(type);
+        const levelMultiplier = getLevelMultiplier(level);
+        // Custom color logic to give enemies a red/darker tint
+        const effectiveColor = team === 'player' ? s.color : s.color.replace(/#44|#88|#22|#00|#FF|#D2B48C/g, match => {
+            if (match === '#44') return '#FF';
+            if (match === '#88') return '#CC';
+            if (match === '#22') return '#88';
+            if (match === '#00') return '#AA';
+            if (match === '#FF') return '#8B'; 
+            if (match === '#D2B48C') return '#A0522D'; // Royal Giant enemy color
+            return match;
+        }); 
+        
+        super(x, y, team, Math.round(s.hp * levelMultiplier), s.radius, effectiveColor, s.isFlying, s.shape);
+        this.speedCategory = s.speedCategory || getSpeedCategory(s.speed || 1);
+        this.baseSpeed = s.baseSpeed || getSpeedMultiplier(this.speedCategory);
+        this.damage = Math.round(s.dmg * levelMultiplier);
+        this.range = s.range;
+        this.level = level;
+        this.targetType = s.target; 
+        this.type = type;
+        this.target = null;
+        this.attackCooldown = 0;
+        this.projectileSpec = s.projectile; 
+        this.isSplash = s.isSplash || false;
+        this.splashRadius = s.splashRadius || 0;
+        
+        // Prince Charge Logic
+        this.isCharged = false;
+        this.chargeTimer = 0;
+        this.chargeSpec = s.charge;
+        this.distanceTraveled = 0;
+        this.lastX = x;
+        this.lastY = y;
+        
+        // Inferno Dragon Logic
+        this.damageScale = s.damageScale;
+        this.scaleTimer = 0;
+        this.currentDamage = this.damage;
+        this.slowDuration = 0;
+        this.slowFactorValue = 1.0;
+        this.frozenDuration = 0;
+    }
+
+    update() {
+        if (this.dead) return;
+
+        // Check for freezing from spells
+        if (this.frozen) {
+            this.isCharged = false; // Reset charge if frozen
+            if (this.frozenDuration > 0) {
+                this.frozenDuration--;
+            }
+            if (this.frozenDuration <= 0) {
+                this.frozen = false;
+            }
+            return; 
+        }
+
+        // Handle Prince / Dark Prince Charge
+        if ((this.type === 'prince' || this.type === 'dark_prince') && this.chargeSpec) {
+            this.distanceTraveled += Math.hypot(this.x - this.lastX, this.y - this.lastY);
+            
+            if (!this.target && this.distanceTraveled >= this.chargeSpec.minDistance) {
+                this.isCharged = true;
+                this.color = '#FFFF00'; // Charged color
+            } else if (this.target && this.target.dead) {
+                 this.isCharged = false;
+                 this.color = CARD_SPECS[this.type].color;
+                 this.distanceTraveled = 0;
+            }
+            this.lastX = this.x;
+            this.lastY = this.y;
+            
+            // Speed boost when charged
+            if (this.isCharged) {
+                this.baseSpeed = CARD_SPECS[this.type].speed * 1.5; 
+            } else {
+                this.baseSpeed = CARD_SPECS[this.type].speed;
+            }
+        }
+        
+        // Handle Inferno Dragon Damage Scaling
+        if (this.type === 'inferno_dragon' && this.damageScale) {
+            if (this.target && !this.target.dead) {
+                this.scaleTimer = Math.min(this.damageScale.duration, this.scaleTimer + 1);
+                
+                // Calculate damage based on scale
+                const maxDmg = this.damage * this.damageScale.max;
+                const scaleFactor = this.scaleTimer / this.damageScale.duration;
+                this.currentDamage = this.damage + (maxDmg - this.damage) * scaleFactor;
+                
+            } else {
+                this.scaleTimer = 0;
+                this.currentDamage = this.damage; // Reset damage when target is lost
+            }
+        } else {
+            this.currentDamage = this.damage;
+        }
+
+
+        let slowFactor = 1.0;
+        if (this.slowDuration > 0) {
+            slowFactor = Math.min(slowFactor, this.slowFactorValue);
+            this.slowDuration--;
+        }
+
+        const effectiveSpeed = this.baseSpeed * currentArena.speedModifier * slowFactor * GLOBAL_SPEED_MODIFIER;
+        
+        if (this.type === 'air_spirit') {
+            this.target = this.findAllyToHeal();
+        } else {
+            this.target = this.findTarget();
+        }
+        if (this.type === 'inferno_dragon') this.scaleTimer = 0; // Reset scale on new target search
+
+        if (this.target) {
+            const dx = this.target.x - this.x;
+            const dy = this.target.y - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist <= this.range + this.target.radius) {
+                if (this.attackCooldown <= 0) {
+                    let damageToDeal = this.currentDamage;
+                    let wasCharged = false;
+                    
+                    if (this.isCharged) {
+                        damageToDeal *= this.chargeSpec.multiplier;
+                        this.isCharged = false; 
+                        this.color = CARD_SPECS[this.type].color;
+                        this.distanceTraveled = 0;
+                        wasCharged = true;
+                    }
+                    
+                    // --- APPLY DAMAGE LOGIC ---
+                    if (this.type === 'air_spirit') {
+                        const healAmount = CARD_SPECS['air_spirit'].heal || 50;
+                        const healed = Math.min(this.target.maxHp - this.target.hp, healAmount);
+                        if (healed > 0) {
+                            this.target.hp += healed;
+                            const healText = new DamageText(this.target.x, this.target.y - this.target.radius - 10, healed, false);
+                            healText.color = 'lime';
+                            healText.fontSize = 14;
+                            damageTexts.push(healText);
+                        }
+                        visualEffects.push(new VisualEffect(this.target.x, this.target.y, 'rgba(144, 238, 144, 0.7)', 25, 20, null, 'area'));
+                        this.dead = true;
+                    } else if (this.type === 'water_spirit') {
+                        if (this.target && !this.target.dead) {
+                            this.target.slowDuration = Math.max(this.target.slowDuration || 0, 120);
+                            this.target.slowFactorValue = Math.min(this.target.slowFactorValue || 1.0, CARD_SPECS['water_spirit'].slowFactor || 0.5);
+                            visualEffects.push(new VisualEffect(this.target.x, this.target.y, 'rgba(0, 191, 255, 0.7)', 30, 20, null, 'area'));
+                        }
+                        this.dead = true;
+                    } else if (this.type === 'zappies') {
+                        if (this.target && !this.target.dead && this.target instanceof Unit) {
+                            this.target.frozen = true;
+                            this.target.frozenDuration = CARD_SPECS['zappies'].stunDuration || 90;
+                            visualEffects.push(new VisualEffect(this.target.x, this.target.y, 'rgba(173,216,230,0.8)', this.target.radius + 10, 20, null, 'area'));
+                        }
+                        if (this.target && !this.target.dead) {
+                            this.target.takeDamage(damageToDeal, wasCharged);
+                        }
+                    } else if (this.isSplash && this.splashRadius > 0) {
+                        const allTargets = [...towers, ...entities].filter(e => e.team !== this.team && !e.dead);
+                        for (const splashTarget of allTargets) {
+                            const splashDist = Math.hypot(splashTarget.x - this.target.x, splashTarget.y - this.target.y);
+                            if (splashDist < this.splashRadius + splashTarget.radius) {
+                                const isPrimary = splashTarget === this.target;
+                                let splashDmg = isPrimary ? damageToDeal : damageToDeal * 0.4;
+                                splashTarget.takeDamage(splashDmg, wasCharged);
+                            }
+                        }
+                    } else {
+                        this.target.takeDamage(damageToDeal, wasCharged);
+                    }
+                    // --------------------------
+                    
+                    this.attackCooldown = 60;
+                    
+                    if (this.range > this.radius * 2 && this.projectileSpec) {
+                        visualEffects.push(new VisualEffect(this.x, this.y, this.projectileSpec.color, this.projectileSpec.size, 20, this.target));
+                    } else if (this.range <= this.radius * 2 || this.isSplash) {
+                        visualEffects.push(new VisualEffect(this.target.x, this.target.y, 'rgba(255, 255, 255, 0.5)', this.isSplash ? this.splashRadius : this.target.radius / 2, 5, null, 'area'));
+                    }
+                }
+            } else {
+                const shouldUseBridge = !this.isFlying && this.target && this.isAcrossRiver(this.target) && !this.canCrossRiver() && !this.isOnBridge();
+                const movementTarget = shouldUseBridge ? this.getBridgeTarget() : { x: this.target.x, y: this.target.y };
+                const angle = Math.atan2(movementTarget.y - this.y, movementTarget.x - this.x);
+                this.x += Math.cos(angle) * effectiveSpeed;
+                this.y += Math.sin(angle) * effectiveSpeed;
+            }
+        } else if (!this.isFlying) {
+            const forwardY = (this.team === 'player') ? -effectiveSpeed : effectiveSpeed;
+            if (this.target && this.isAcrossRiver(this.target) && !this.canCrossRiver() && !this.isOnBridge()) {
+                const movementTarget = this.getBridgeTarget();
+                const angle = Math.atan2(movementTarget.y - this.y, movementTarget.x - this.x);
+                this.x += Math.cos(angle) * effectiveSpeed;
+                this.y += Math.sin(angle) * effectiveSpeed;
+            } else {
+                this.y += forwardY;
+            }
+        }
+
+        if (this.attackCooldown > 0) this.attackCooldown--;
+    }
+
+    findTarget() {
+        let closest = null;
+        let minDist = Infinity;
+        
+        const filterFn = (e) => {
+            if (e.team === this.team || e.dead) return false;
+            
+            if (this.targetType === 'buildings' && (!(e instanceof Tower) && !(e instanceof Structure))) return false; 
+            
+            const hitsAir = this.targetType === 'air_ground' || this.isFlying;
+            const hitsGround = this.targetType !== 'air';
+            
+            if (e.isFlying && !hitsAir) return false; 
+            if (!e.isFlying && !hitsGround) return false; 
+            
+            return true; 
+        };
+        
+        const potentialTargets = [...towers, ...entities].filter(filterFn);
+
+        for (const t of potentialTargets) {
+            const dx = t.x - this.x;
+            const dy = t.y - this.y;
+            const d = Math.sqrt(dx*dx + dy*dy);
+            if (d < minDist) {
+                minDist = d;
+                closest = t;
+            }
+        }
+        return closest;
+    }
+
+    getBridgeTarget() {
+        const riverMid = GAME_HEIGHT / 2;
+        const bridgeY = this.team === 'player' ? riverMid + 10 : riverMid - 10;
+        const bridges = [
+            { x: 100, y: bridgeY },
+            { x: 300, y: bridgeY }
+        ];
+        let best = bridges[0];
+        let bestDist = Infinity;
+        for (const bridge of bridges) {
+            const dx = bridge.x - this.x;
+            const dy = bridge.y - this.y;
+            const d = Math.sqrt(dx*dx + dy*dy);
+            if (d < bestDist) {
+                bestDist = d;
+                best = bridge;
+            }
+        }
+        return best;
+    }
+
+    isOnBridge() {
+        const riverTop = GAME_HEIGHT / 2 - 25 - this.radius;
+        const riverBottom = GAME_HEIGHT / 2 + 25 + this.radius;
+        const withinBridgeX = (this.x >= 80 - this.radius && this.x <= 120 + this.radius) || (this.x >= 280 - this.radius && this.x <= 320 + this.radius);
+        return withinBridgeX && this.y >= riverTop && this.y <= riverBottom;
+    }
+
+    canCrossRiver() {
+        return this.isFlying || ((this.type === 'prince' || this.type === 'dark_prince') && this.isCharged);
+    }
+
+    isAcrossRiver(entity) {
+        const riverMid = GAME_HEIGHT / 2;
+        if (this.team === 'player') {
+            return entity.y < riverMid;
+        }
+        return entity.y > riverMid;
+    }
+
+    findAllyToHeal() {
+        let closest = null;
+        let minDist = Infinity;
+        const allies = [...towers, ...entities].filter(e => e.team === this.team && !e.dead && e.hp < e.maxHp);
+        for (const ally of allies) {
+            const dx = ally.x - this.x;
+            const dy = ally.y - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closest = ally;
+            }
+        }
+        return closest;
+    }
+    
+    draw() {
+        super.draw();
+        
+        // Draw Charge Indicator for Prince
+        if (this.type) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.9;
+
+            // Flying wing indicators
+            if (this.isFlying) {
+                ctx.beginPath();
+                ctx.moveTo(-this.radius * 1.2, 0);
+                ctx.quadraticCurveTo(-this.radius * 1.5, -this.radius * 1.2, -this.radius * 0.5, -this.radius * 0.4);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(this.radius * 1.2, 0);
+                ctx.quadraticCurveTo(this.radius * 1.5, -this.radius * 1.2, this.radius * 0.5, -this.radius * 0.4);
+                ctx.stroke();
+            }
+
+            switch (this.type) {
+                case 'knight':
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.4, -this.radius * 0.6);
+                    ctx.lineTo(this.radius * 0.4, -this.radius * 0.6);
+                    ctx.lineTo(this.radius * 0.6, 0);
+                    ctx.lineTo(this.radius * 0.4, this.radius * 0.6);
+                    ctx.lineTo(-this.radius * 0.4, this.radius * 0.6);
+                    ctx.closePath();
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.radius * 0.6);
+                    ctx.lineTo(0, this.radius * 0.6);
+                    ctx.stroke();
+                    break;
+                case 'prince':
+                case 'dark_prince':
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.5, -this.radius);
+                    ctx.lineTo(-this.radius * 0.25, -this.radius * 1.4);
+                    ctx.lineTo(0, -this.radius);
+                    ctx.lineTo(this.radius * 0.25, -this.radius * 1.4);
+                    ctx.lineTo(this.radius * 0.5, -this.radius);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.6, -this.radius * 0.2);
+                    ctx.lineTo(this.radius * 0.6, -this.radius * 0.2);
+                    ctx.stroke();
+                    break;
+                case 'hog_rider':
+                    ctx.beginPath();
+                    ctx.arc(-this.radius * 0.3, -this.radius * 0.5, this.radius * 0.25, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.1, -this.radius * 0.2);
+                    ctx.lineTo(this.radius * 0.6, -this.radius * 0.5);
+                    ctx.stroke();
+                    break;
+                case 'baby_dragon':
+                case 'inferno_dragon':
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.9, -this.radius * 0.2);
+                    ctx.quadraticCurveTo(-this.radius * 1.2, -this.radius * 0.8, -this.radius * 0.4, -this.radius * 0.6);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(this.radius * 0.9, -this.radius * 0.2);
+                    ctx.quadraticCurveTo(this.radius * 1.2, -this.radius * 0.8, this.radius * 0.4, -this.radius * 0.6);
+                    ctx.stroke();
+                    break;
+                case 'archer':
+                case 'musketeer':
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.5, -this.radius * 0.2);
+                    ctx.lineTo(this.radius * 0.5, -this.radius * 0.6);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(this.radius * 0.5, -this.radius * 0.6);
+                    ctx.lineTo(this.radius * 0.3, -this.radius * 0.4);
+                    ctx.stroke();
+                    break;
+                case 'goblin':
+                case 'goblin_gang':
+                case 'spear_goblin':
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.4, -this.radius * 0.8);
+                    ctx.lineTo(-this.radius * 0.6, -this.radius * 1.2);
+                    ctx.lineTo(-this.radius * 0.2, -this.radius * 0.9);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(this.radius * 0.4, -this.radius * 0.8);
+                    ctx.lineTo(this.radius * 0.6, -this.radius * 1.2);
+                    ctx.lineTo(this.radius * 0.2, -this.radius * 0.9);
+                    ctx.stroke();
+                    break;
+                case 'valkyrie':
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.radius * 0.8);
+                    ctx.lineTo(0, this.radius * 0.2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.radius * 0.4);
+                    ctx.lineTo(this.radius * 0.6, -this.radius * 0.8);
+                    ctx.stroke();
+                    break;
+                case 'royal_recruits':
+                case 'royal_giant':
+                    ctx.beginPath();
+                    ctx.moveTo(-this.radius * 0.5, -this.radius * 0.9);
+                    ctx.lineTo(0, -this.radius * 1.3);
+                    ctx.lineTo(this.radius * 0.5, -this.radius * 0.9);
+                    ctx.stroke();
+                    break;
+            }
+            ctx.restore();
+        }
+
+        if ((this.type === 'prince' || this.type === 'dark_prince') && this.isCharged) {
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.5)';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Draw Inferno Dragon damage indicator
+        if (this.type === 'inferno_dragon' && this.target && !this.target.dead) {
+            const maxDmg = this.damage * this.damageScale.max;
+            const scaleFactor = this.scaleTimer / this.damageScale.duration;
+            const indicatorColor = scaleFactor < 0.3 ? 'yellow' : (scaleFactor < 0.7 ? 'orange' : 'red');
+            const indicatorRadius = this.radius * (1 + scaleFactor);
+
+            ctx.strokeStyle = indicatorColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, indicatorRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Display current damage near the unit
+            ctx.fillStyle = indicatorColor;
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Dmg: ${Math.ceil(this.currentDamage)}`, this.x, this.y - this.radius * 2);
+        }
+    }
+}
+
+class Tower extends Entity {
+    constructor(x, y, team, isKing) {
+        const towerLevel = getTowerLevel(team);
+        const towerMultiplier = getLevelMultiplier(towerLevel);
+        const hp = isKing ? 3500 : 1800; 
+        super(x, y, team, Math.round(hp * towerMultiplier), isKing ? 25 : 20, team === 'player' ? 'blue' : 'red', false, 'square');
+        this.damage = Math.round(50 * towerMultiplier); 
+        this.range = Math.round(120 * (1 + (towerLevel - 1) * 0.05));
+        this.cooldown = 0;
+        this.isKing = isKing;
+        this.kingActivated = false;
+        this.activationTimer = 0;
+        this.targetType = 'air_ground';
+        this.level = towerLevel;
+    }
+
+    update() {
+        if (this.dead) return;
+        if (this.frozen) return;
+
+        if (this.isKing) {
+            const threat = entities.find(e => e.team !== this.team && !e.dead && Math.hypot(e.x - this.x, e.y - this.y) < this.range * 1.5);
+            if (threat && !this.kingActivated) {
+                this.kingActivated = true;
+                this.activationTimer = 120;
+                this.cooldown = 0;
+                addGameFeedMessage(this.team === 'player' ? 'User' : 'Bot', 'King Tower activated!');
+                visualEffects.push(new VisualEffect(this.x, this.y, 'rgba(255, 255, 0, 0.8)', 20, 30, null, 'area'));
+            }
+            if (this.kingActivated && this.activationTimer > 0) {
+                this.activationTimer--;
+                if (this.activationTimer <= 0) this.kingActivated = false;
+            }
+        }
+
+        if (this.cooldown > 0) this.cooldown--;
+
+        const enemies = entities.filter(e => e.team !== this.team && !e.dead);
+        let closest = null;
+        let minDist = this.range;
+
+        for (const e of enemies) {
+            const distFixed = Math.hypot(e.x - this.x, e.y - this.y); 
+            if (distFixed < minDist) {
+                minDist = distFixed;
+                closest = e;
+            }
+        }
+
+        if (closest && this.cooldown <= 0) {
+            closest.takeDamage(this.damage);
+            this.cooldown = 40; 
+            
+            visualEffects.push(new VisualEffect(this.x, this.y, 'rgba(255, 255, 0, 0.9)', 5, 20, closest));
+        }
+    }
+}
+
+class Structure extends Entity {
+    constructor(type, x, y, team) {
+        const s = CARD_SPECS[type];
+        const level = getCardLevel(type);
+        const levelMultiplier = getLevelMultiplier(level);
+        const radius = 15; 
+        let color;
+        if (type === 'goblin_drill') {
+             color = team === 'player' ? s.color : s.color.replace(/#8B4513/g, '#D2B48C');
+        } else if (type === 'water_spirit') {
+             color = team === 'player' ? s.color : s.color.replace(/#00BFFF/g, '#1E90FF'); 
+        } else if (type === 'barbarian_hut') {
+             color = team === 'player' ? s.color : s.color.replace(/#A0522D/g, '#8B4513');
+        } else {
+             color = team === 'player' ? 'darkgreen' : 'darkred';
+        }
+        
+        super(x, y, team, Math.round(s.hp * levelMultiplier), radius, color, false, s.shape);
+        this.damage = Math.round(s.dmg * levelMultiplier);
+        this.range = Math.round(s.range * levelMultiplier);
+        this.targetType = s.target; 
+        this.type = type;
+        this.lifetime = Math.round(s.lifetime * (1 + (level - 1) * 0.08)); 
+        this.maxLifetime = Math.round(s.lifetime * (1 + (level - 1) * 0.08)); 
+        this.attackCooldown = 0;
+        this.projectileSpec = s.projectile; 
+        this.spawnTimer = s.spawnInterval || 0;
+        this.spawnUnitType = s.spawnUnit;
+        this.spawnCount = s.spawnCount || 1; 
+    }
+
+    update() {
+        if (this.dead) return;
+        if (this.frozen) return;
+        
+        this.lifetime--;
+        if (this.lifetime <= 0) {
+            this.dead = true;
+            return;
+        }
+
+        this.updateOffensiveAbilities();
+        this.updateSpawnAbilities(); 
+    }
+
+    updateOffensiveAbilities() {
+        if (this.attackCooldown > 0) this.attackCooldown--;
+        if (this.range === 0 || this.damage === 0) return;
+
+        const potentialTargets = [...towers, ...entities].filter(e => e.team !== this.team && !e.dead);
+        let closest = null;
+        let minDist = this.range;
+
+        for (const e of potentialTargets) {
+            if (this.targetType === 'buildings' && (!(e instanceof Tower) && !(e instanceof Structure))) continue;
+            const hitsAir = this.targetType === 'air_ground';
+            if (e.isFlying && !hitsAir) continue; 
+            
+            const distFixed = Math.hypot(e.x - this.x, e.y - this.y); 
+            if (distFixed < minDist) {
+                minDist = distFixed;
+                closest = e;
+            }
+        }
+
+        if (closest && this.attackCooldown <= 0) {
+            closest.takeDamage(this.damage);
+            this.attackCooldown = 40; 
+            
+            if (this.type === 'tesla') {
+                visualEffects.push(new VisualEffect(this.x, this.y, 'rgba(0, 191, 255, 0.9)', 5, 10, closest, 'zap'));
+            } else if (this.projectileSpec) {
+                visualEffects.push(new VisualEffect(this.x, this.y, this.projectileSpec.color, this.projectileSpec.size, 20, closest));
+            }
+        }
+    }
+
+    updateSpawnAbilities() {
+        if (this.spawnUnitType) {
+            this.spawnTimer--;
+            if (this.spawnTimer <= 0) {
+                const s = CARD_SPECS[this.type];
+                this.spawnTimer = s.spawnInterval;
+                
+                const spawnUnitType = this.spawnUnitType;
+                
+                let spawnTargetX = this.x;
+                let spawnTargetY = this.y;
+                let isTeleportSpawn = false;
+                
+                if (this.type === 'goblin_drill') {
+                    const enemyKing = towers.find(t => t.team !== this.team && t.isKing);
+                    if (enemyKing) {
+                         // Spawn slightly behind the King Tower, relative to attack direction
+                        spawnTargetX = enemyKing.x + (Math.random() * 40 - 20);
+                        const behindOffset = this.team === 'player' ? 50 : -50;
+                        spawnTargetY = enemyKing.y + (Math.random() * 30 - 15) + behindOffset;
+                        isTeleportSpawn = true;
+                    }
+                }
+                
+                // Spawn the units
+                for (let i = 0; i < this.spawnCount; i++) {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+
+                    if (this.type === 'barbarian_hut') {
+                        // Barbarian Hut spawns towards the closest bridge (if on player's side)
+                        const bridgeCenterY = GAME_HEIGHT / 2;
+                        
+                        // Spawn barbarians just outside the hut, moving forward
+                        let dx = Math.cos(Math.random() * Math.PI * 2) * 10;
+                        let dy = (this.team === 'player' ? -10 : 10) + (Math.random() * 10 - 5); 
+
+                        entities.push(new Unit(spawnUnitType, this.x + dx, this.y + dy, this.team));
+                    } else if (isTeleportSpawn) {
+                        entities.push(new Unit(spawnUnitType, spawnTargetX + offsetX, spawnTargetY + offsetY, this.team));
+                    } else {
+                        entities.push(new Unit(spawnUnitType, this.x + offsetX, this.y + offsetY, this.team));
+                    }
+                }
+
+                // Visual effect for spawn
+                const visualColor = this.type === 'barbarian_hut' ? 'orange' : '#00FF00';
+                visualEffects.push(new VisualEffect(spawnTargetX, spawnTargetY, visualColor, 10, 10, null, 'area')); 
+            }
+        }
+    }
+    
+    draw() {
+        super.draw(); 
+        
+        // Draw Lifetime/Decay bar
+        const lifetimePct = this.lifetime / this.maxLifetime;
+        ctx.fillStyle = 'brown';
+        ctx.fillRect(this.x - 15, this.y - this.radius - 20, 30, 3);
+        ctx.fillStyle = 'orange';
+        ctx.fillRect(this.x - 15, this.y - this.radius - 20, 30 * lifetimePct, 3);
+    }
+}
+
+class VisualEffect {
+    constructor(x, y, color, radius, duration, target = null, type = 'projectile') {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.radius = radius;
+        this.lifetime = duration;
+        this.maxLifetime = duration;
+        this.dead = false;
+        this.target = target;
+        this.type = type; // 'projectile', 'area', 'zap', 'lightning', 'royal_delivery'
+    }
+
+    update() {
+        this.lifetime--;
+        if (this.lifetime <= 0) this.dead = true;
+
+        if (this.type === 'projectile' && this.target && !this.target.dead) {
+            const speed = 15; 
+            const dx = this.target.x - this.x;
+            const dy = this.target.y - this.y;
+            const dist = Math.hypot(dx, dy);
+            
+            if (dist < speed) {
+                this.dead = true;
+            } else {
+                const angle = Math.atan2(dy, dx);
+                this.x += Math.cos(angle) * speed; 
+                this.y += Math.sin(angle) * speed;
+            }
+        }
+    }
+
+    draw() {
+        ctx.globalAlpha = this.lifetime / this.maxLifetime;
+
+        if (this.type === 'royal_delivery') {
+            // Draw a rectangle descending from the sky
+            const rectWidth = 30;
+            const rectHeight = 40;
+            const progress = 1 - (this.lifetime / this.maxLifetime); // 0 (start) to 1 (land)
+            const startY = -rectHeight;
+            const landY = this.y;
+            
+            const currentY = startY + (landY - startY) * Math.min(1, progress * 2); // Accelerate landing
+
+            ctx.fillStyle = '#8B4513'; // Brown box
+            ctx.fillRect(this.x - rectWidth / 2, currentY, rectWidth, rectHeight);
+
+            if (this.lifetime < 10) {
+                // Flash on impact
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.beginPath();
+                ctx.arc(this.x, landY, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+        } else if (this.type === 'zap' && this.target && !this.target.dead) {
+            // Draw a zig-zag line for a lightning effect
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const startX = this.x;
+            const startY = this.y;
+            const endX = this.target.x;
+            const endY = this.target.y;
+            
+            ctx.moveTo(startX, startY);
+            
+            // Simple 3-point zap effect
+            for (let i = 1; i <= 3; i++) {
+                const ratio = i / 4;
+                const midX = startX + (endX - startX) * ratio;
+                const midY = startY + (endY - startY) * ratio;
+                const perpendicularOffset = Math.random() * 10 - 5; 
+                
+                const dx = endX - startX;
+                const dy = endY - startY;
+                const length = Math.hypot(dx, dy);
+                
+                const offsetX = perpendicularOffset * (dy / length);
+                const offsetY = perpendicularOffset * (-dx / length);
+                
+                ctx.lineTo(midX + offsetX, midY + offsetY);
+            }
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+        } else if (this.type === 'lightning') {
+            // Lightning strike effect from the sky to the target's center
+             if (this.target && !this.target.dead) {
+                const startX = this.target.x;
+                const startY = 0; // Starts off-screen (the sky)
+                const endX = this.target.x;
+                const endY = this.target.y;
+                
+                ctx.strokeStyle = '#FFFFFF'; // Bright white center
+                ctx.lineWidth = 4;
+                ctx.shadowColor = '#00FFFF';
+                ctx.shadowBlur = 10;
+                
+                // Draw main bolt path (zig-zag)
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                for (let i = 1; i <= 8; i++) {
+                    const ratio = i / 9;
+                    const midX = startX + (Math.random() * 20 - 10);
+                    const midY = startY + (endY - startY) * ratio;
+                    ctx.lineTo(midX, midY);
+                }
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+                
+                ctx.shadowBlur = 0; // Reset shadow
+            }
+
+
+        } else if (this.type === 'projectile') {
+            // Draw projectile (filled circle)
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+        } else {
+            // Draw area effect (fading circle)
+            const scale = this.lifetime / this.maxLifetime;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * (1 + (1 - scale) * 0.5), 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.globalAlpha = 1; 
+    }
+}
+
+
+/** GAMEFLOW LOGIC **/
+
+// --- NEW ADMIN UNLOCK FUNCTION ---
+function adminUnlock() {
+    const codeInput = prompt("Enter a code:");
+    if (codeInput === null) return;
+
+    const userCode = codeInput.trim().toUpperCase();
+    if (!userCode) {
+        alert('Please enter a code.');
+        return;
+    }
+
+    if (redeemedCodes.includes(userCode)) {
+        alert(`Code ${userCode} has already been used.`);
+        return;
+    }
+
+    if (userCode === 'SUPERCHAMP') {
+        unlockedCardsStore = Object.keys(CARD_SPECS).filter(key => 
+            key !== 'goblin' && key !== 'spear_goblin' && key !== 'barbarian' && key !== 'musketeer'
+        );
+        AVAILABLE_CARDS = initializeAvailableCards();
+        redeemedCodes.push(userCode);
+        saveGameData();
+        alert('SUPERCHAMP activated: all cards unlocked!');
+        showMainMenu();
+        return;
+    }
+
+    if (userCode === 'COIN100') {
+        coins += 100;
+        redeemedCodes.push(userCode);
+        saveGameData();
+        updateUI();
+        alert('Code accepted! You received 100 coins.');
+        showMainMenu();
+        return;
+    }
+
+    if (userCode === 'TROPHY10') {
+        trophies += 10;
+        redeemedCodes.push(userCode);
+        AVAILABLE_CARDS = initializeAvailableCards();
+        saveGameData();
+        updateUI();
+        alert('Code accepted! You received 10 trophies.');
+        showMainMenu();
+        return;
+    }
+
+    alert('Incorrect code.');
+}
+
+// --- TROPHY SAVE/LOAD FUNCTIONS ---
+function saveGameData() {
+    localStorage.setItem('champRoyaleTrophies', trophies);
+    localStorage.setItem('champRoyaleCoins', coins);
+    localStorage.setItem('unlockedCards', JSON.stringify(unlockedCardsStore));
+    localStorage.setItem('champRoyaleRedeemedCodes', JSON.stringify(redeemedCodes));
+    localStorage.setItem('champRoyaleCardLevels', JSON.stringify(cardLevels));
+    localStorage.setItem('champRoyaleTowerLevels', JSON.stringify(towerLevels));
+    localStorage.setItem('champRoyalePlayerDeck', JSON.stringify(playerDeck));
+}
+
+function checkTrophyUnlocks() {
+    let unlockMessage = "";
+    let newlyUnlocked = [];
+    
+    // Check for Card Unlocks
+    TROPHY_ROAD_REWARDS.forEach(reward => {
+        if (reward.rewardType === 'card' && reward.trophies > 0 && 
+            trophies >= reward.trophies && !unlockedCardsStore.includes(reward.cardKey)) {
+            
+            unlockedCardsStore.push(reward.cardKey);
+            newlyUnlocked.push(CARD_SPECS[reward.cardKey].name);
+        }
+    });
+
+    // Check for Arena Unlocks (informational, no code change needed as arena selection handles it)
+    ARENAS.forEach(arena => {
+        if (arena.trophies > 0 && trophies >= arena.trophies && !newlyUnlocked.includes(arena.name)) {
+            // Find the maximum trophy count for any unlocked arena so far
+            const currentMaxTrophyArena = ARENAS.filter(a => trophies >= a.trophies).reduce((max, a) => Math.max(max, a.trophies), 0);
+            
+            // Only announce the highest new arena unlocked at this trophy level
+            if (arena.trophies === currentMaxTrophyArena) {
+                 newlyUnlocked.push(`Arena: ${arena.name}`);
+            }
+        }
+    });
+
+
+    if (newlyUnlocked.length > 0) {
+        unlockMessage = `✨ New Unlocks! ${newlyUnlocked.join(', ')}!`;
+        AVAILABLE_CARDS = [...new Set(unlockedCardsStore)];
+        let added = false;
+        TROPHY_ROAD_REWARDS.forEach(reward => {
+            if (reward.rewardType === 'card' && trophies >= reward.trophies && !playerDeck.includes(reward.cardKey) && playerDeck.length < DECK_SIZE) {
+                playerDeck.push(reward.cardKey);
+                added = true;
+            }
+        });
+        ensureLevelDefaults();
+        if (added) validatePlayerDeck();
+    }
+
+    return unlockMessage;
+}
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+function initializeDeck() {
+    const playableCards = AVAILABLE_CARDS.filter(c => c !== 'goblin' && c !== 'spear_goblin' && c !== 'barbarian' && c !== 'musketeer');
+    validatePlayerDeck();
+    const deckSource = playerDeck.length === DECK_SIZE ? [...playerDeck] : [...playableCards.slice(0, DECK_SIZE)];
+    DECK = shuffle(deckSource);
+    HAND = [];
+
+    for (let i = 0; i < HAND_SIZE; i++) {
+        drawCard();
+    }
+    renderHand();
+}
+
+function openDeckBuilder() {
+    hideMainMenu();
+    showDeckBuilder();
+}
+
+function openCardCollection() {
+    hideMainMenu();
+    showCardCollection();
+}
+
+function openTrophyRoad() {
+    hideMainMenu();
+    showTrophyRoad();
+}
+
+function showDeckBuilder() {
+    messageScreen.style.display = 'none';
+    cardCollectionScreen.style.display = 'none';
+    trophyRoadScreen.style.display = 'none';
+    deckBuilderScreen.style.display = 'flex';
+    populateDeckBuilder();
+}
+
+function hideDeckBuilder() {
+    deckBuilderScreen.style.display = 'none';
+    if (gameOver) {
+        messageScreen.style.display = 'flex';
+    } else if (!gameStarted) {
+        showMainMenu();
+    }
+}
+
+function saveDeckConfiguration() {
+    if (deckSelection.length !== DECK_SIZE) {
+        alert(`Select exactly ${DECK_SIZE} cards to save your deck.`);
+        return;
+    }
+    playerDeck = [...deckSelection];
+    validatePlayerDeck();
+    saveGameData();
+    alert('Deck saved! Your next game will use this deck.');
+    hideDeckBuilder();
+}
+
+function toggleDeckCard(cardKey) {
+    if (!AVAILABLE_CARDS.includes(cardKey)) return;
+    const idx = deckSelection.indexOf(cardKey);
+    if (idx >= 0) {
+        deckSelection.splice(idx, 1);
+    } else if (deckSelection.length < DECK_SIZE) {
+        deckSelection.push(cardKey);
+    }
+    renderDeckBuilder();
+}
+
+function populateDeckBuilder() {
+    const playableCards = AVAILABLE_CARDS.filter(c => c !== 'goblin' && c !== 'spear_goblin' && c !== 'barbarian' && c !== 'musketeer');
+    if (!playerDeck || playerDeck.length !== DECK_SIZE) {
+        playerDeck = playableCards.slice(0, DECK_SIZE);
+    }
+    deckSelection = playerDeck.filter(key => playableCards.includes(key));
+    while (deckSelection.length < DECK_SIZE && deckSelection.length < playableCards.length) {
+        const next = playableCards.find(key => !deckSelection.includes(key));
+        if (!next) break;
+        deckSelection.push(next);
+    }
+    renderDeckBuilder();
+}
+
+function renderDeckBuilder() {
+    deckSlotsContainer.innerHTML = '';
+    for (let i = 0; i < DECK_SIZE; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'deck-slot';
+        if (deckSelection[i]) {
+            const cardKey = deckSelection[i];
+            const spec = CARD_SPECS[cardKey];
+            slot.classList.add('filled');
+            slot.innerHTML = `<span>${spec.name}</span><p>Lv ${getCardLevel(cardKey)}</p>`;
+            slot.addEventListener('click', () => toggleDeckCard(cardKey));
+        } else {
+            slot.innerHTML = `<span>Empty Slot</span><p>Click a card below</p>`;
+        }
+        deckSlotsContainer.appendChild(slot);
+    }
+    deckSelectedCount.innerText = `${deckSelection.length}/${DECK_SIZE}`;
+
+    deckCardGrid.innerHTML = '';
+    const towerPanel = document.createElement('div');
+    towerPanel.className = 'deck-card unlocked';
+    towerPanel.innerHTML = `
+        <div class="card-name">Player Towers</div>
+        <div class="card-level">Lv ${getTowerLevel('player')}</div>
+        <p>HP x${getLevelMultiplier(getTowerLevel('player')).toFixed(2)}</p>
+        <p>DMG x${getLevelMultiplier(getTowerLevel('player')).toFixed(2)}</p>
+        <button class="upgrade-button" ${coins < LEVEL_UP_COST || getTowerLevel('player') >= MAX_LEVEL ? 'disabled' : ''} onclick="upgradeTower('player')">Upgrade Tower (${LEVEL_UP_COST} 💰)</button>
+    `;
+    deckCardGrid.appendChild(towerPanel);
+
+    AVAILABLE_CARDS.filter(c => c !== 'goblin' && c !== 'spear_goblin' && c !== 'barbarian' && c !== 'musketeer').forEach(cardKey => {
+        const spec = CARD_SPECS[cardKey];
+        const cardDiv = document.createElement('div');
+        const selected = deckSelection.includes(cardKey);
+        cardDiv.className = `deck-card ${selected ? 'unlocked' : 'unlocked'}`;
+        cardDiv.innerHTML = `
+            <div>
+                <div class="card-name">${spec.name}</div>
+                <div class="card-level">Lv ${getCardLevel(cardKey)}</div>
+                <p>Cost: ${spec.cost}</p>
+            </div>
+            <button class="upgrade-button" ${coins < LEVEL_UP_COST || getCardLevel(cardKey) >= MAX_LEVEL ? 'disabled' : ''} onclick="event.stopPropagation(); upgradeCardLevel('${cardKey}')">Upgrade (${LEVEL_UP_COST} 💰)</button>
+        `;
+        cardDiv.addEventListener('click', () => toggleDeckCard(cardKey));
+        deckCardGrid.appendChild(cardDiv);
+    });
+}
+
+function upgradeCardLevel(cardKey) {
+    const current = getCardLevel(cardKey);
+    if (current >= MAX_LEVEL) {
+        alert('This card is already at max level.');
+        return;
+    }
+    if (coins < LEVEL_UP_COST) {
+        alert('Not enough coins to upgrade.');
+        return;
+    }
+    coins -= LEVEL_UP_COST;
+    cardLevels[cardKey] = current + 1;
+    saveGameData();
+    updateUI();
+    renderDeckBuilder();
+}
+
+function upgradeTower(team) {
+    const current = getTowerLevel(team);
+    if (current >= MAX_LEVEL) {
+        alert('Towers are already at max level.');
+        return;
+    }
+    if (coins < LEVEL_UP_COST) {
+        alert('Not enough coins to upgrade towers.');
+        return;
+    }
+    coins -= LEVEL_UP_COST;
+    towerLevels[team] = current + 1;
+    saveGameData();
+    updateUI();
+    renderDeckBuilder();
+}
+
+function drawCard() {
+    if (DECK.length === 0) {
+        validatePlayerDeck();
+        DECK = shuffle([...playerDeck]);
+    }
+
+    let attempts = 0;
+    while (DECK.length > 0) {
+        const nextCard = DECK.pop();
+        if (!HAND.includes(nextCard) || HAND.length === 0) {
+            HAND.push(nextCard);
+            return;
+        }
+        DECK.unshift(nextCard);
+        attempts++;
+        if (attempts >= DECK.length) break;
+    }
+
+    // If only duplicates remain, allow the card to be drawn to avoid an empty hand.
+    if (DECK.length > 0) {
+        HAND.push(DECK.pop());
+    }
+}
+
+function renderHand() {
+    const cardSlots = uiLayer.querySelectorAll('.card-slot');
+    
+    cardSlots.forEach((slot, index) => {
+        const cardType = HAND[index];
+        slot.innerHTML = ''; 
+        
+        if (cardType) {
+            const spec = CARD_SPECS[cardType];
+            const typeClass = spec.type;
+            const canAfford = elixir >= spec.cost;
+            
+            const cardElement = document.createElement('div');
+            cardElement.className = `card ${typeClass} ${!canAfford ? 'disabled' : ''}`;
+            
+            let statsHtml = '';
+            if (spec.hp > 0) {
+                statsHtml += `<span style="color: green;">HP: ${spec.hp}</span>`;
+            }
+            if (spec.dmg > 0) {
+                statsHtml += `<span style="color: red;">DMG: ${spec.dmg}</span>`;
+            }
+            if (spec.isFlying) {
+                statsHtml += `<span style="color: blue;">FLYING</span>`;
+            }
+            if (spec.isSplash) {
+                statsHtml += `<span style="color: #6A5ACD;">SPLASH</span>`;
+            }
+            if (spec.target && spec.target !== 'buildings') {
+                const targetText = spec.target.replace('_', '/').toUpperCase();
+                statsHtml += `<span style="color: orange;">Target: ${targetText}</span>`;
+            }
+            if (spec.lifetime) {
+                statsHtml += `<span style="color: brown;">LIFE: ${Math.round(spec.lifetime / 60)}s</span>`;
+            }
+            const cardSpeedCategory = spec.speedCategory || getSpeedCategory(spec.speed || 1);
+            statsHtml += `<span style="color: #00FFFF;">Speed: ${cardSpeedCategory.replace('_', ' ').toUpperCase()}</span>`;
+            if (spec.charge) {
+                 statsHtml += `<span style="color: gold;">Charge DMG: ${spec.dmg * spec.charge.multiplier}</span>`;
+            }
+            if (spec.spawn && spec.spawn.length > 0) {
+                statsHtml += `<span style="color: #00AA00;">Spawns ${spec.spawn.length} units</span>`;
+            } else if (spec.damageScale) {
+                 statsHtml += `<span style="color: firebrick;">Scales up to ${spec.dmg * spec.damageScale.max} DMG</span>`;
+            } else if (spec.spawnUnit && spec.type === 'structure') {
+                 // Spawner Structure Info
+                 statsHtml += `<span style="color: #A0522D;">Spawns ${spec.spawnCount} ${CARD_SPECS[spec.spawnUnit].name}s every ${Math.round(spec.spawnInterval/60)}s</span>`;
+            }
+
+
+            cardElement.innerHTML = `
+                <div style="text-align: center;">
+                    <span style="font-size: 10px; font-weight: bold;">${spec.name}</span>
+                    <div style="font-size: 10px; color: #FFD700; margin-top: 2px;">Lv ${getCardLevel(cardType)}</div>
+                </div>
+                <div class="card-stats">${statsHtml}</div>
+                <span class="elixir-cost">${spec.cost}</span>
+            `;
+            
+            cardElement.addEventListener('click', () => {
+                handleCardClick(index, cardType);
+            });
+            
+            if (selectedCard && selectedCard.type === cardType) {
+                cardElement.classList.add('selected');
+            }
+
+            slot.appendChild(cardElement);
+        }
+    });
+}
+
+function handleCardClick(index, type) {
+    const spec = CARD_SPECS[type];
+    
+    if (elixir < spec.cost || gameOver) {
+        return;
+    }
+
+    if (selectedCard && selectedCard.type === type) {
+        selectedCard = null;
+    } else {
+        selectedCard = { 
+            type: type, 
+            cost: spec.cost,
+            isSpell: spec.type === 'spell',
+            isStructure: spec.type === 'structure',
+            handIndex: index
+        };
+    }
+    renderHand(); 
+}
+
+
+/** GAME LOGIC **/
+
+function selectRandomArena() {
+    // Filter arenas based on current trophy count
+    const possibleArenas = ARENAS.filter(a => trophies >= a.trophies);
+    const randomIndex = Math.floor(Math.random() * possibleArenas.length);
+    currentArena = possibleArenas[randomIndex];
+    
+    // Set starting elixir based on the arena
+    startingElixir = currentArena.startingElixir;
+    startingEnemyElixir = currentArena.startingElixir;
+
+    canvasElement.style.backgroundColor = currentArena.grassColor;
+}
+
+function setupTowers() {
+    towers = []; 
+    // Enemy Towers
+    towers.push(new Tower(100, 100, 'enemy', false));
+    towers.push(new Tower(300, 100, 'enemy', false));
+    towers.push(new Tower(200, 50, 'enemy', true));
+    
+    // Player Towers
+    towers.push(new Tower(100, 650, 'player', false)); 
+    towers.push(new Tower(300, 650, 'player', false)); 
+    towers.push(new Tower(200, 700, 'player', true));  
+}
+
+function init() {
+    gameOver = false;
+    selectRandomArena(); // This must happen before elixir is set
+    
+    elixir = startingElixir;
+    enemyElixir = startingEnemyElixir; 
+    entities = [];
+    towers = []; 
+    visualEffects = [];
+    damageTexts = []; 
+    selectedCard = null;
+    gameStarted = true;
+    unlockMessageDisplay.innerText = ''; 
+
+    setupTowers();
+    initializeDeck();
+
+    if (elixirInterval) clearInterval(elixirInterval);
+    if (enemySpawnInterval) clearInterval(enemySpawnInterval);
+    
+    elixirInterval = setInterval(updateElixir, currentArena.elixirRate); 
+    enemySpawnInterval = setInterval(aiAttemptSpawn, currentArena.enemySpawnRate); 
+    
+    if (!gameOver) { 
+        requestAnimationFrame(gameLoop);
+    }
+    updateUI();
+}
+
+function restartGame() {
+    gameOver = false;
+    messageScreen.style.display = 'none';
+    cardCollectionScreen.style.display = 'none';
+    trophyRoadScreen.style.display = 'none';
+    hideMainMenu();
+
+    init();
+}
+
+function showMainMenu() {
+    if (mainMenu) {
+        mainMenu.style.display = 'flex';
+    }
+    if (topUI) {
+        topUI.style.display = 'none';
+    }
+    gameStarted = false;
+}
+
+function hideMainMenu() {
+    if (mainMenu) {
+        mainMenu.style.display = 'none';
+    }
+    if (topUI) {
+        topUI.style.display = 'flex';
+    }
+}
+
+function startGame() {
+    hideMainMenu();
+    init();
+}
+
+function updateElixir() {
+    if (gameOver) return;
+    if (elixir < MAX_ELIXIR) elixir++;
+    
+    if (enemyElixir < ENEMY_MAX_ELIXIR) enemyElixir++;
+    
+    renderHand(); 
+    updateUI();
+}
+
+function castSpell(type, x, y, team = 'player') {
+    const spec = CARD_SPECS[type];
+    const targets = [...towers, ...entities].filter(e => e.team !== team && !e.dead);
+    const friendlyFire = team === 'enemy'; // Allow AI to hit its own troops with area damage sometimes
+
+    if (type === 'fireball' || type === 'rocket' || type === 'royal_delivery') {
+        const damage = spec.dmg;
+        const radius = spec.radius;
+        
+        for (const t of targets) {
+            const dist = Math.hypot(t.x - x, t.y - y);
+            if (dist < radius + t.radius) {
+                const isAirTarget = t.isFlying;
+                const canHitAir = spec.target === 'air_ground';
+                
+                if (canHitAir || !isAirTarget) {
+                    const effectiveDamage = (t instanceof Tower) ? damage * 0.4 : damage; 
+                    t.takeDamage(effectiveDamage);
+                }
+            }
+        }
+        
+        // --- ROYAL DELIVERY SPAWN LOGIC ---
+        if (type === 'royal_delivery' && spec.spawnUnit) {
+            entities.push(new Unit(spec.spawnUnit, x, y, team));
+        }
+        // ----------------------------------
+        
+        // Visuals
+        if (type === 'royal_delivery') {
+            visualEffects.push(new VisualEffect(x, y, '#8B4513', radius, 30, null, 'royal_delivery')); 
+        } else if (type === 'rocket') {
+            visualEffects.push(new VisualEffect(x, y, 'rgba(255, 0, 0, 0.9)', radius, 30, null, 'area'));
+        } else {
+             visualEffects.push(new VisualEffect(x, y, 'rgba(255, 69, 0, 0.8)', radius, 30, null, 'area'));
+        }
+
+    } else if (type === 'freeze') {
+        const duration = spec.duration;
+        const radius = spec.radius;
+        
+        const allEntities = [...towers, ...entities].filter(e => !e.dead);
+        
+        for (const e of allEntities) {
+            const dist = Math.hypot(e.x - x, e.y - y);
+            if (dist < radius + e.radius) {
+                e.frozen = true;
+                visualEffects.push(new VisualEffect(e.x, e.y, '#ADD8E6', e.radius + 5, duration, null, 'area'));
+            }
+        }
+    } else if (type === 'arrows') {
+        const damage = spec.dmg;
+        const radius = spec.radius;
+        for (const t of targets) {
+            const dist = Math.hypot(t.x - x, t.y - y);
+            if (dist < radius + t.radius) {
+                const isAirTarget = t.isFlying;
+                const canHitAir = spec.target === 'air_ground';
+                if (canHitAir || !isAirTarget) {
+                    const effectiveDamage = (t instanceof Tower) ? damage * 0.4 : damage;
+                    t.takeDamage(effectiveDamage);
+                }
+            }
+        }
+        visualEffects.push(new VisualEffect(x, y, 'rgba(255, 255, 255, 0.85)', radius, 20, null, 'area'));
+    } else if (type === 'goblin_barrel') {
+        for (let i = 0; i < spec.spawnCount; i++) {
+            const offsetX = Math.random() * 20 - 10;
+            const offsetY = Math.random() * 20 - 10;
+            entities.push(new Unit('goblin', x + offsetX, y + offsetY, team)); 
+        }
+        visualEffects.push(new VisualEffect(x, y, 'rgba(0, 100, 0, 0.7)', 40, 40, null, 'area'));
+    } else if (type === 'lightning') {
+        const damage = spec.dmg;
+        const radius = spec.radius;
+        const potentialTargets = [...towers, ...entities].filter(e => 
+            e.team !== team && !e.dead && Math.hypot(e.x - x, e.y - y) < radius + e.radius
+        );
+
+        // Sort by HP descending to target the highest HP units/buildings first
+        potentialTargets.sort((a, b) => b.hp - a.hp); 
+        
+        const hits = Math.min(spec.hits, potentialTargets.length);
+
+        for (let i = 0; i < hits; i++) {
+            const t = potentialTargets[i];
+            const effectiveDamage = (t instanceof Tower) ? damage * 0.4 : damage; 
+            t.takeDamage(effectiveDamage);
+            
+            // Visual effect for each hit, pointing from the sky (0) to the target
+            visualEffects.push(new VisualEffect(x, y, '#FFFFFF', 5, 20, t, 'lightning'));
+        }
+    }
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    if (gameOver || !selectedCard || !gameStarted) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const cardType = selectedCard.type;
+    const spec = CARD_SPECS[cardType];
+    
+    // Deployment area check: Spells can go anywhere, others must be on player's side.
+    if (spec.type !== 'spell' && y < GAME_HEIGHT / 2) return; 
+
+    if (selectedCard.isStructure) {
+        entities.push(new Structure(cardType, x, y, 'player'));
+    } else if (spec.type === 'unit') {
+        
+        // --- MULTI-UNIT SPAWN LOGIC ---
+        if (spec.spawnCount) {
+            if (cardType === 'three_musketeers') {
+                const spawnUnits = [{x: x - 30, y: y + 15}, {x: x, y: y - 15}, {x: x + 30, y: y + 15}];
+                spawnUnits.forEach(pos => entities.push(new Unit('musketeer', pos.x, pos.y, 'player')));
+            } else if (cardType === 'royal_recruits') {
+                const separation = 40;
+                const startX = x - ((spec.spawnCount - 1) * separation) / 2;
+                for (let i = 0; i < spec.spawnCount; i++) {
+                    const spawnX = startX + i * separation;
+                    entities.push(new Unit(cardType, spawnX, y, 'player'));
+                }
+            } else if (cardType === 'goblin_gang') {
+                spec.spawn.forEach(unitType => {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+                    entities.push(new Unit(unitType, x + offsetX, y + offsetY, 'player'));
+                });
+            } else {
+                for (let i = 0; i < spec.spawnCount; i++) {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+                    entities.push(new Unit(cardType, x + offsetX, y + offsetY, 'player'));
+                }
+            }
+        } else {
+            // Single unit spawn (Knight, Royal Giant, etc.)
+            entities.push(new Unit(cardType, x, y, 'player'));
+        }
+    } else {
+        castSpell(cardType, x, y, 'player');
+    }
+    
+    elixir -= selectedCard.cost;
+    
+    HAND.splice(selectedCard.handIndex, 1);
+    drawCard();
+    const userAction = spec.type === 'spell' ? 'cast' : 'placed';
+    addGameFeedMessage('User', `${userAction} ${SPEC_NAME(cardType)}`);
+    
+    selectedCard = null;
+    updateUI();
+    renderHand(); 
+});
+
+
+function aiAttemptSpawn() {
+    if (gameOver) return;
+
+    // AI logic: attempt to play a card if elixir is high or it's a cheap card.
+    if (enemyElixir < 4 && Math.random() < 0.6) return; 
+
+    // Filter available cards by enemy elixir cost
+    const affordableCards = AVAILABLE_CARDS.filter(type => 
+        CARD_SPECS[type].cost <= enemyElixir && 
+        type !== 'goblin' && type !== 'spear_goblin' && type !== 'barbarian' && type !== 'musketeer' // Exclude component units
+    );
+    
+    if (affordableCards.length === 0) return;
+
+    const randomType = affordableCards[Math.floor(Math.random() * affordableCards.length)];
+    const spec = CARD_SPECS[randomType];
+
+    const isStructure = spec.type === 'structure';
+    const isSpell = spec.type === 'spell';
+
+    // Deployment coordinates for AI (Top half, slightly randomized)
+    const bridgeX = Math.random() < 0.5 ? 100 : 300;
+    const deployX = bridgeX + (Math.random() * 40 - 20);
+    const deployY = isStructure ? GAME_HEIGHT / 2 - 80 : Math.random() * 80 + 60;
+
+    if (isSpell) {
+        const spellX = GAME_WIDTH / 2 + (Math.random() * 120 - 60);
+        const spellY = GAME_HEIGHT / 2 + 80 + Math.random() * 80;
+        castSpell(randomType, spellX, spellY, 'enemy');
+    } else if (isStructure) {
+        entities.push(new Structure(randomType, deployX, deployY, 'enemy'));
+    } else {
+        // Unit Spawning Logic
+        if (spec.spawnCount && (randomType === 'skeleton_army' || randomType === 'minions' || randomType === 'three_musketeers')) {
+             const unitType = randomType === 'three_musketeers' ? 'musketeer' : randomType;
+             
+             // Simple swarm spawn for AI
+             for (let i = 0; i < spec.spawnCount; i++) {
+                const offsetX = Math.random() * 20 - 10;
+                const offsetY = Math.random() * 20 - 10;
+                entities.push(new Unit(unitType, deployX + offsetX, deployY + offsetY, 'enemy'));
+             }
+        } else if (spec.spawnCount) {
+            if (randomType === 'three_musketeers') {
+                const spawnPositions = [{x: deployX - 30, y: deployY + 15}, {x: deployX, y: deployY - 15}, {x: deployX + 30, y: deployY + 15}];
+                spawnPositions.forEach(pos => entities.push(new Unit('musketeer', pos.x, pos.y, 'enemy')));
+            } else if (randomType === 'royal_recruits') {
+                const separation = 40;
+                for (let i = 0; i < spec.spawnCount; i++) {
+                    const spawnX = deployX - ((spec.spawnCount - 1) * separation) / 2 + i * separation;
+                    entities.push(new Unit(randomType, spawnX, deployY, 'enemy'));
+                }
+            } else if (randomType === 'goblin_gang') {
+                spec.spawn.forEach(unitType => {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+                    entities.push(new Unit(unitType, deployX + offsetX, deployY + offsetY, 'enemy'));
+                });
+            } else {
+                for (let i = 0; i < spec.spawnCount; i++) {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+                    entities.push(new Unit(randomType, deployX + offsetX, deployY + offsetY, 'enemy'));
+                }
+            }
+        } else {
+            entities.push(new Unit(randomType, deployX, deployY, 'enemy'));
+        }
+    }
+    
+    enemyElixir -= spec.cost;
+    const botAction = spec.type === 'spell' ? 'cast' : 'placed';
+    addGameFeedMessage('Bot', `${botAction} ${SPEC_NAME(randomType)}`);
+}
+
+function addGameFeedMessage(actor, message) {
+    if (!gameFeedContainer) return;
+    const entry = document.createElement('div');
+    entry.className = 'feed-entry';
+    const actorClass = actor === 'User' ? 'actor' : 'bot';
+    entry.innerHTML = `<span class="actor ${actorClass}">${actor}:</span> ${message}`;
+    gameFeedContainer.prepend(entry);
+    while (gameFeedContainer.childElementCount > 8) {
+        gameFeedContainer.removeChild(gameFeedContainer.lastChild);
+    }
+}
+
+function updateUI() {
+    const fill = document.getElementById('elixir-fill');
+    fill.style.width = (elixir / MAX_ELIXIR) * 100 + '%';
+    // Update the data-elixir attribute for the pseudo-element text
+    elixirBar.setAttribute('data-elixir', elixir);
+    if (statusPanel) {
+        statusPanel.innerText = `🏆 ${trophies}  💰 ${coins}`;
+    }
+}
+
+function displayGameOver(result) {
+    gameOver = true;
+    clearInterval(elixirInterval);
+    clearInterval(enemySpawnInterval);
+
+    let trophyChange = 0;
+    if (result === "YOU WIN") {
+        trophyChange = 30;
+        trophyChangeDisplay.style.color = 'lime';
+        trophyChangeDisplay.innerText = `+${trophyChange} Trophies!`;
+    } else {
+        trophyChange = -20;
+        trophyChangeDisplay.style.color = 'red';
+        trophyChangeDisplay.innerText = `${trophyChange} Trophies!`;
+    }
+    
+    // 1. Update and clamp trophies
+    const oldTrophies = trophies;
+    trophies += trophyChange;
+    trophies = Math.max(0, trophies); 
+    
+    // 2. Check for new unlocks
+    const unlockMsg = checkTrophyUnlocks();
+    unlockMessageDisplay.innerText = unlockMsg;
+
+    // 3. Save the new trophy count and cards to local storage
+    saveGameData(); 
+    
+    updateUI(); 
+    
+    gameResultText.innerText = result;
+    messageScreen.style.display = 'flex';
+}
+
+function gameLoop() {
+    if (gameOver) return; 
+
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    drawMap();
+    
+    const allEntities = [...towers, ...entities];
+    const freezeEffects = visualEffects.filter(v => v.color === '#ADD8E6');
+    
+    allEntities.forEach(e => {
+        const nearbyFreeze = freezeEffects.find(f => Math.hypot(e.x - f.x, e.y - f.y) < f.radius + e.radius);
+        e.frozen = !!nearbyFreeze;
+    });
+
+    for (let i = towers.length - 1; i >= 0; i--) {
+        const t = towers[i];
+        t.update(); 
+        t.draw(); 
+        if (t.dead && !t.isKing) { 
+            towers.splice(i, 1);
+        }
+    }
+    
+    const playerKing = towers.find(t => t.team === 'player' && t.isKing);
+    const enemyKing = towers.find(t => t.team === 'enemy' && t.isKing);
+    
+    if (playerKing && playerKing.dead) {
+        displayGameOver("YOU LOSE");
+    } else if (enemyKing && enemyKing.dead) {
+        displayGameOver("YOU WIN");
+    }
+
+    for (let i = entities.length - 1; i >= 0; i--) {
+        const u = entities[i];
+        u.update();
+        u.draw();
+        if (u.dead) entities.splice(i, 1);
+    }
+
+    for (let i = visualEffects.length - 1; i >= 0; i--) {
+        const v = visualEffects[i];
+        v.update();
+        v.draw();
+        if (v.dead) visualEffects.splice(i, 1);
+    }
+    
+    for (let i = damageTexts.length - 1; i >= 0; i--) {
+        const d = damageTexts[i];
+        d.update();
+        d.draw();
+        if (d.dead) damageTexts.splice(i, 1);
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+function drawMap() {
+    // Draw the "lanes" or dirt paths
+    ctx.fillStyle = currentArena.color1;
+    ctx.fillRect(80, GAME_HEIGHT/2 + 20, 240, GAME_HEIGHT/2 - 20 - 50); 
+    ctx.fillRect(80, 50, 240, GAME_HEIGHT/2 - 20 - 50); 
+
+    // River
+    ctx.fillStyle = currentArena.riverColor;
+    ctx.fillRect(0, GAME_HEIGHT/2 - 20, GAME_WIDTH, 40);
+    
+    // Bridges
+    ctx.fillStyle = currentArena.bridgeColor;
+    ctx.fillRect(80, GAME_HEIGHT/2 - 25, 40, 50); 
+    ctx.fillRect(280, GAME_HEIGHT/2 - 25, 40, 50); 
+    
+    // Deployment Line
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.moveTo(0, GAME_HEIGHT/2);
+    ctx.lineTo(GAME_WIDTH, GAME_HEIGHT/2);
+    ctx.stroke();
+    
+    // Arena Name
+    ctx.fillStyle = 'white';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(currentArena.name.toUpperCase(), GAME_WIDTH / 2, 20);
+}
+
+
+/** UI SCREEN LOGIC **/
+
+function showCardCollection() {
+    hideMainMenu();
+    messageScreen.style.display = 'none';
+    trophyRoadScreen.style.display = 'none';
+    cardCollectionScreen.style.display = 'flex';
+    populateCardCollection();
+}
+
+function hideCardCollection() {
+    cardCollectionScreen.style.display = 'none';
+    if (!gameStarted) {
+        showMainMenu();
+    } else if (gameOver) {
+        messageScreen.style.display = 'flex';
+    }
+}
+
+function populateCardCollection() {
+    cardListContainer.innerHTML = '';
+    
+    // Get all card keys that are not component units
+    const allCardKeys = Object.keys(CARD_SPECS).filter(key => key !== 'goblin' && key !== 'spear_goblin' && key !== 'barbarian' && key !== 'musketeer').sort((a, b) => {
+        const costA = CARD_SPECS[a].cost;
+        const costB = CARD_SPECS[b].cost;
+        if (costA !== costB) return costA - costB;
+        return CARD_SPECS[a].name.localeCompare(CARD_SPECS[b].name);
+    });
+
+    for (const key of allCardKeys) {
+        const spec = CARD_SPECS[key];
+        const isUnlocked = AVAILABLE_CARDS.includes(key);
+        let unlockRequirement = '';
+
+        if (!isUnlocked) {
+             const reward = TROPHY_ROAD_REWARDS.find(r => r.cardKey === key);
+             if (reward) {
+                 unlockRequirement = `LOCKED (${reward.trophies} Trophies)`;
+             } else {
+                 unlockRequirement = 'LOCKED (Trophy Road)';
+             }
+        }
+
+        const cardElement = document.createElement('div');
+        cardElement.className = `collection-card ${isUnlocked ? 'unlocked' : 'locked'}`;
+        
+        let statsHtml = '';
+        statsHtml += `<p>Level: ${getCardLevel(key)}</p>`;
+        statsHtml += `<p>Type: ${spec.type.toUpperCase()}</p>`;
+        if (spec.hp) statsHtml += `<p>HP: ${spec.hp}</p>`;
+        if (spec.dmg) statsHtml += `<p>DMG: ${spec.dmg}</p>`;
+        if (spec.range > 20) statsHtml += `<p style="color: blue;">Ranged: ${spec.range}</p>`;
+        if (spec.isFlying) statsHtml += `<p>Traits: Flying</p>`;
+        if (spec.isSplash) statsHtml += `<p style="color: #6A5ACD;">Traits: Splash</p>`;
+        if (spec.lifetime) statsHtml += `<p>Lifetime: ${Math.round(spec.lifetime / 60)}s</p>`;
+        if (spec.slowFactor) statsHtml += `<p>Effect: Slow (${spec.slowFactor * 100}%)</p>`;
+        if (spec.charge) statsHtml += `<p style="color: gold;">Charge DMG: ${spec.dmg * spec.charge.multiplier}</p>`;
+        
+        if (spec.spawnCount && key === 'three_musketeers') {
+             statsHtml += `<p style="color: #CC00CC;">Spawns 3 Musketeers</p>`;
+        } else if (spec.spawn && spec.spawn.length > 0) {
+            statsHtml += `<p style="color: #00AA00;">Spawns: ${spec.spawn.map(k => CARD_SPECS[k].name).join(', ')}</p>`;
+        }
+        if (spec.damageScale) {
+            statsHtml += `<p style="color: firebrick;">Scales up to ${spec.dmg * spec.damageScale.max} DMG</p>`;
+        }
+        if (spec.spawnUnit && spec.type === 'structure') {
+            statsHtml += `<p style="color: #A0522D;">Spawns ${spec.spawnCount} ${CARD_SPECS[spec.spawnUnit].name}s every ${Math.round(spec.spawnInterval/60)}s</p>`;
+        }
+        
+        if (unlockRequirement) statsHtml += `<p style="color: red; font-weight: bold;">${unlockRequirement}</p>`;
+
+        cardElement.innerHTML = `
+            <h4>${spec.name}</h4>
+            <div class="cost-display">${spec.cost}💰</div>
+            ${statsHtml}
+        `;
+        
+        cardListContainer.appendChild(cardElement);
+    }
+}
+
+
+function showTrophyRoad() {
+    hideMainMenu();
+    messageScreen.style.display = 'none';
+    cardCollectionScreen.style.display = 'none';
+    trophyRoadScreen.style.display = 'flex';
+    populateTrophyRoad();
+}
+
+function hideTrophyRoad() {
+    trophyRoadScreen.style.display = 'none';
+    if (!gameStarted) {
+        showMainMenu();
+    } else if (gameOver) {
+        messageScreen.style.display = 'flex';
+    }
+}
+
+function populateTrophyRoad() {
+    trophyRoadList.innerHTML = '';
+    trophyRoadCurrentTrophies.innerText = trophies;
+    
+    // Combine Arenas and Card Rewards into a single list, sorted by trophy requirement
+    let allRewards = [
+        ...TROPHY_ROAD_REWARDS.map(r => ({ ...r, display: CARD_SPECS[r.cardKey].name, rewardType: 'Card Unlock' })),
+        ...ARENAS.filter(a => a.trophies > 0).map(a => ({ trophies: a.trophies, rewardType: 'Arena Unlock', display: `New Arena: ${a.name}` }))
+    ];
+    
+    // Sort rewards primarily by trophy count, then by type for consistent display
+    allRewards.sort((a, b) => a.trophies - b.trophies || a.rewardType.localeCompare(b.rewardType));
+
+    allRewards.forEach(reward => {
+        const isUnlocked = trophies >= reward.trophies;
+        let className = isUnlocked ? 'unlocked-now' : '';
+        
+        const itemElement = document.createElement('li');
+        itemElement.className = `trophy-road-item ${className}`;
+        
+        let status = isUnlocked ? 'UNLOCKED' : 'LOCKED';
+        let statusColor = isUnlocked ? '#32CD32' : '#FF4500';
+
+        itemElement.innerHTML = `
+            <span class="trophy-count">🏆 ${reward.trophies}</span>
+            <span class="reward-name">${reward.display} (${reward.rewardType})</span>
+            <span style="color: ${statusColor}; font-weight: bold;">${status}</span>
+        `;
+        
+        trophyRoadList.appendChild(itemElement);
+    });
+}
+
+
+showMainMenu();
+</script>
+</body>
+</html>
