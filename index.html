@@ -1054,6 +1054,7 @@ async function createMatch(player1Id, player2Id) {
             status: 'active',
             createdAt: firebase.database.ServerValue.TIMESTAMP,
             startedAt: firebase.database.ServerValue.TIMESTAMP
+            
         };
 
         const newMatchRef = database.ref('matches').push(matchData);
@@ -1180,7 +1181,7 @@ function startMultiplayerGame() {
     gameStarted = true;
     gameOver = false;
     currentTime = 0;
-    currentArena = ARENAS[getCurrentArenaTier()];
+    currentArena = { id: 1, name: 'Default Arena', startingElixir: 5 };
     currentElixir = currentArena.startingElixir;
     
     // Initialize game entities
@@ -1198,7 +1199,7 @@ function startMultiplayerGame() {
     towers.push(new Tower(75, 50, 'enemy', false));
     towers.push(new Tower(GAME_WIDTH - 75, 50, 'enemy', false));
 
-    mainGameLoop();
+    gameLoop();
 }
 
 // ============= SIGN OUT =============
