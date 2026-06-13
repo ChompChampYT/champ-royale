@@ -896,6 +896,8 @@ let isLocalPlayer = true; // true = player (bottom), false = enemy (top)
 let opponentUser = null;
 let matchId = null;
 let gameStateRef = null;
+let actionsRef = null;
+let processedActionIds = new Set();
 let playerRole = 'player'; // 'player' or 'opponent'
 
 // ============= AUTH HANDLERS =============
@@ -978,52 +980,105 @@ function showMatchmakingOptions() {
 }
 
 // ============= MATCHMAKING HANDLERS =============
+let matchmakingRef = null;
+let matchmakingListRef = null;
+let matchmakingTimeoutId = null;
+let matchmakingComplete = false;
+
+function cleanupMatchmaking(removeOwnRequest = false) {
+    if (matchmakingTimeoutId) {
+        clearTimeout(matchmakingTimeoutId);
+        matchmakingTimeoutId = null;
+    }
+
+    if (matchmakingListRef) {
+        matchmakingListRef.off('value');
+        matchmakingListRef = null;
+    }
+
+    if (matchmakingRef) {
+        matchmakingRef.off('value');
+        if (removeOwnRequest) matchmakingRef.remove().catch(console.error);
+        matchmakingRef = null;
+    }
+}
+
 async function startMatchmaking() {
+    if (!currentUser) {
+        alert('Please sign in before starting multiplayer.');
+        return;
+    }
+
+    cleanupMatchmaking(true);
     showMatchmakingScreen();
+    matchmakingComplete = false;
     
     try {
-        // Create a pending match request
+        const username = (await database.ref(`users/${currentUser.uid}/username`).once('value')).val() || 'Player';
+        const userTrophies = (await database.ref(`users/${currentUser.uid}/trophies`).once('value')).val() || 0;
         const matchRequest = {
             playerId: currentUser.uid,
-            username: (await database.ref(`users/${currentUser.uid}/username`).once('value')).val(),
-            trophies: (await database.ref(`users/${currentUser.uid}/trophies`).once('value')).val() || 0,
+            username: username,
+            trophies: userTrophies,
             status: 'waiting',
             createdAt: firebase.database.ServerValue.TIMESTAMP
         };
 
-        const newMatchRef = database.ref('matchmaking').push(matchRequest);
-        const myMatchRequestId = newMatchRef.key;
+        matchmakingRef = database.ref('matchmaking').push();
+        const myMatchRequestId = matchmakingRef.key;
+        await matchmakingRef.set(matchRequest);
+        matchmakingRef.onDisconnect().remove();
 
-        // Listen for other players
-        let listenerSet = false;
-        const matchListener = database.ref('matchmaking').on('value', async (snapshot) => {
-            if (!listenerSet) {
-                listenerSet = true;
-                const requests = snapshot.val() || {};
-                
-                for (const [requestId, request] of Object.entries(requests)) {
-                    if (requestId !== myMatchRequestId && request.status === 'waiting') {
-                        // Found an opponent!
-                        listenerSet = false;
-                        database.ref('matchmaking').off('value');
-                        
-                        // Create match room
-                        await createMatch(currentUser.uid, request.playerId);
-                        
-                        // Remove match requests
-                        await database.ref(`matchmaking/${myMatchRequestId}`).remove();
-                        await database.ref(`matchmaking/${requestId}`).remove();
-                        break;
-                    }
+        // If another client matches this waiting request, this client joins that match.
+        matchmakingRef.on('value', async (snapshot) => {
+            const request = snapshot.val();
+            if (!request || request.status !== 'matched' || !request.matchId || matchmakingComplete) return;
+
+            matchmakingComplete = true;
+            const requestRefToRemove = matchmakingRef;
+            cleanupMatchmaking(false);
+            await enterMatch(request.matchId);
+            if (requestRefToRemove) requestRefToRemove.remove().catch(console.error);
+        });
+
+        // If an opponent is already waiting, this client creates the match and notifies them.
+        matchmakingListRef = database.ref('matchmaking');
+        matchmakingListRef.on('value', async (snapshot) => {
+            if (matchmakingComplete) return;
+            const requests = snapshot.val() || {};
+
+            for (const [requestId, request] of Object.entries(requests)) {
+                if (requestId === myMatchRequestId) continue;
+                // Firebase push keys sort chronologically, so the newer request claims the older one.
+                if (requestId > myMatchRequestId) continue;
+                if (!request || request.status !== 'waiting' || request.playerId === currentUser.uid) continue;
+
+                matchmakingComplete = true;
+                const ownRequestRef = matchmakingRef;
+                const opponentRequestRef = database.ref(`matchmaking/${requestId}`);
+
+                try {
+                    const createdMatchId = await createMatch(currentUser.uid, request.playerId);
+                    await opponentRequestRef.update({
+                        status: 'matched',
+                        matchId: createdMatchId,
+                        opponentId: currentUser.uid
+                    });
+                    cleanupMatchmaking(false);
+                    if (ownRequestRef) ownRequestRef.remove().catch(console.error);
+                    setTimeout(() => opponentRequestRef.remove().catch(console.error), 5000);
+                } catch (error) {
+                    matchmakingComplete = false;
+                    console.error('Match creation error:', error);
+                    alert('Error creating match: ' + error.message);
+                    cancelMatchmaking();
                 }
+                break;
             }
         });
 
-        // Timeout after 30 seconds
-        setTimeout(() => {
-            if (currentMatch === null) {
-                database.ref('matchmaking').off('value');
-                database.ref(`matchmaking/${myMatchRequestId}`).remove();
+        matchmakingTimeoutId = setTimeout(() => {
+            if (!matchmakingComplete) {
                 alert('No opponent found. Try again!');
                 cancelMatchmaking();
             }
@@ -1032,58 +1087,69 @@ async function startMatchmaking() {
     } catch (error) {
         console.error('Matchmaking error:', error);
         alert('Error starting matchmaking: ' + error.message);
+        cancelMatchmaking();
     }
 }
 
 async function createMatch(player1Id, player2Id) {
-    try {
-        const matchData = {
-            player1: {
-                id: player1Id,
-                hand: [],
-                elixir: 5,
-                towerHP: { main: 1800, left: 1800, right: 1800 }
-            },
-            player2: {
-                id: player2Id,
-                hand: [],
-                elixir: 5,
-                towerHP: { main: 1800, left: 1800, right: 1800 }
-            },
-            entities: [],
-            status: 'active',
-            createdAt: firebase.database.ServerValue.TIMESTAMP,
-            startedAt: firebase.database.ServerValue.TIMESTAMP
-            
-        };
+    const matchData = {
+        arenaIndex: 0,
+        player1: {
+            id: player1Id,
+            hand: [],
+            elixir: 5,
+            towerHP: { main: 1800, left: 1800, right: 1800 }
+        },
+        player2: {
+            id: player2Id,
+            hand: [],
+            elixir: 5,
+            towerHP: { main: 1800, left: 1800, right: 1800 }
+        },
+        entities: [],
+        status: 'active',
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+        startedAt: firebase.database.ServerValue.TIMESTAMP
+    };
 
-        const newMatchRef = database.ref('matches').push(matchData);
-        matchId = newMatchRef.key;
-        currentMatch = matchData;
+    const newMatchRef = database.ref('matches').push();
+    await newMatchRef.set(matchData);
+    await enterMatch(newMatchRef.key, matchData);
+    return newMatchRef.key;
+}
 
-        // Determine player role
-        if (currentUser.uid === player1Id) {
-            playerRole = 'player1';
-            isLocalPlayer = true;
-        } else {
-            playerRole = 'player2';
-            isLocalPlayer = false;
-        }
+async function enterMatch(newMatchId, matchData = null) {
+    const matchState = matchData || (await database.ref(`matches/${newMatchId}`).once('value')).val();
+    if (!matchState) throw new Error('Match room no longer exists.');
 
-        isMultiplayer = true;
-        hideMatchmakingScreen();
-        startMultiplayerGame();
+    matchId = newMatchId;
+    currentMatch = matchState;
 
-        // Listen for game state changes
-        gameStateRef = database.ref(`matches/${matchId}`);
-        gameStateRef.on('value', (snapshot) => {
-            syncGameState(snapshot.val());
-        });
-
-    } catch (error) {
-        console.error('Match creation error:', error);
-        alert('Error creating match: ' + error.message);
+    if (currentUser.uid === matchState.player1.id) {
+        playerRole = 'player1';
+        isLocalPlayer = true;
+    } else if (currentUser.uid === matchState.player2.id) {
+        playerRole = 'player2';
+        isLocalPlayer = false;
+    } else {
+        throw new Error('You are not a player in this match.');
     }
+
+    isMultiplayer = true;
+    startMultiplayerGame();
+
+    if (gameStateRef) gameStateRef.off('value');
+    if (actionsRef) actionsRef.off('child_added');
+    processedActionIds = new Set();
+    gameStateRef = database.ref(`matches/${matchId}`);
+    gameStateRef.on('value', (snapshot) => {
+        syncGameState(snapshot.val());
+    });
+
+    actionsRef = database.ref(`matches/${matchId}/actions`);
+    actionsRef.on('child_added', (snapshot) => {
+        handleRemoteAction(snapshot.key, snapshot.val());
+    });
 }
 
 function showMatchmakingScreen() {
@@ -1096,8 +1162,95 @@ function hideMatchmakingScreen() {
 }
 
 function cancelMatchmaking() {
+    cleanupMatchmaking(true);
+    matchmakingComplete = false;
     hideMatchmakingScreen();
     showMatchmakingOptions();
+}
+
+// ============= MULTIPLAYER CARD ACTIONS =============
+function mirrorMultiplayerPoint(x, y) {
+    return {
+        x: GAME_WIDTH - x,
+        y: GAME_HEIGHT - y
+    };
+}
+
+function applyCardPlay(cardType, x, y, team = 'player') {
+    const spec = CARD_SPECS[cardType];
+    if (!spec) return false;
+
+    if (spec.type === 'structure') {
+        entities.push(new Structure(cardType, x, y, team));
+    } else if (spec.type === 'unit') {
+        if (spec.spawnCount) {
+            if (cardType === 'three_musketeers') {
+                const spawnUnits = [{x: x - 30, y: y + 15}, {x: x, y: y - 15}, {x: x + 30, y: y + 15}];
+                spawnUnits.forEach(pos => entities.push(new Unit('musketeer', pos.x, pos.y, team)));
+            } else if (cardType === 'royal_recruits') {
+                const separation = 40;
+                const startX = x - ((spec.spawnCount - 1) * separation) / 2;
+                for (let i = 0; i < spec.spawnCount; i++) {
+                    const spawnX = startX + i * separation;
+                    entities.push(new Unit(cardType, spawnX, y, team));
+                }
+            } else if (cardType === 'goblin_gang') {
+                spec.spawn.forEach(unitType => {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+                    entities.push(new Unit(unitType, x + offsetX, y + offsetY, team));
+                });
+            } else {
+                for (let i = 0; i < spec.spawnCount; i++) {
+                    const offsetX = Math.random() * 20 - 10;
+                    const offsetY = Math.random() * 20 - 10;
+                    entities.push(new Unit(cardType, x + offsetX, y + offsetY, team));
+                }
+            }
+        } else {
+            entities.push(new Unit(cardType, x, y, team));
+        }
+    } else {
+        castSpell(cardType, x, y, team);
+    }
+
+    return true;
+}
+
+async function broadcastCardPlay(cardType, x, y) {
+    if (!isMultiplayer || !matchId || !actionsRef || !currentUser) return;
+
+    const actionRef = actionsRef.push();
+    processedActionIds.add(actionRef.key);
+    await actionRef.set({
+        type: 'cardPlay',
+        cardType,
+        x,
+        y,
+        playerId: currentUser.uid,
+        playerRole,
+        createdAt: firebase.database.ServerValue.TIMESTAMP
+    });
+}
+
+function handleRemoteAction(actionId, action) {
+    if (!actionId || processedActionIds.has(actionId)) return;
+    processedActionIds.add(actionId);
+
+    if (!action || action.playerId === currentUser?.uid) return;
+    if (action.type !== 'cardPlay' || !action.cardType) return;
+
+    const x = Number(action.x);
+    const y = Number(action.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    const point = mirrorMultiplayerPoint(x, y);
+    const played = applyCardPlay(action.cardType, point.x, point.y, 'enemy');
+    if (played) {
+        const spec = CARD_SPECS[action.cardType];
+        const opponentAction = spec.type === 'spell' ? 'cast' : 'placed';
+        addGameFeedMessage('Opponent', `${opponentAction} ${SPEC_NAME(action.cardType)}`);
+    }
 }
 
 // ============= GAME STATE SYNCHRONIZATION =============
@@ -1154,7 +1307,15 @@ async function broadcastGameState() {
 
 function endMultiplayerGame(winner) {
     isMultiplayer = false;
-    gameStateRef.off('value');
+    if (gameStateRef) {
+        gameStateRef.off('value');
+        gameStateRef = null;
+    }
+    if (actionsRef) {
+        actionsRef.off('child_added');
+        actionsRef = null;
+    }
+    processedActionIds.clear();
 
     if (currentUser.uid === winner) {
         alert('🏆 You Won!');
@@ -1165,48 +1326,65 @@ function endMultiplayerGame(winner) {
         database.ref(`users/${currentUser.uid}/trophies`).transaction(val => Math.max(0, (val || 0) - 10));
     }
 
-    // Clean up
-    database.ref(`matches/${matchId}`).remove();
+    const finishedMatchId = matchId;
     matchId = null;
     currentMatch = null;
+    if (finishedMatchId) database.ref(`matches/${finishedMatchId}`).remove();
 }
 
 function startMultiplayerGame() {
+    hideMainMenu();
+    hideMatchmakingScreen();
+
     // Show player indicator
     const indicator = document.getElementById('player-indicator');
     indicator.style.display = 'block';
     indicator.textContent = `Playing as: ${playerRole === 'player1' ? 'Player 1' : 'Player 2'}`;
 
-    // Restore game state from single-player
     gameStarted = true;
     gameOver = false;
     currentTime = 0;
-    currentArena = { id: 1, name: 'Default Arena', startingElixir: 5 };
-    currentElixir = currentArena.startingElixir;
+    selectedCard = null;
+    unlockMessageDisplay.innerText = '';
+
+    // Multiplayer was using a partial arena object, which broke drawMap().
+    // Use the same full arena config that single-player expects.
+    const arenaIndex = currentMatch && Number.isInteger(currentMatch.arenaIndex) ? currentMatch.arenaIndex : 0;
+    currentArena = ARENAS[arenaIndex] || ARENAS[0];
+    startingElixir = currentArena.startingElixir;
+    startingEnemyElixir = currentArena.startingElixir;
+    elixir = startingElixir;
+    enemyElixir = startingEnemyElixir;
+    canvasElement.style.backgroundColor = currentArena.grassColor;
     
-    // Initialize game entities
     entities = [];
     towers = [];
     visualEffects = [];
     damageTexts = [];
     
-    // Create towers
-    towers.push(new Tower(GAME_WIDTH / 2, GAME_HEIGHT - 50, 'player', true));
-    towers.push(new Tower(75, GAME_HEIGHT - 50, 'player', false));
-    towers.push(new Tower(GAME_WIDTH - 75, GAME_HEIGHT - 50, 'player', false));
-    
-    towers.push(new Tower(GAME_WIDTH / 2, 50, 'enemy', true));
-    towers.push(new Tower(75, 50, 'enemy', false));
-    towers.push(new Tower(GAME_WIDTH - 75, 50, 'enemy', false));
+    setupTowers();
+    initializeDeck();
 
-    gameLoop();
+    if (elixirInterval) clearInterval(elixirInterval);
+    if (enemySpawnInterval) clearInterval(enemySpawnInterval);
+    elixirInterval = setInterval(updateElixir, currentArena.elixirRate);
+    enemySpawnInterval = null;
+
+    updateUI();
+    requestAnimationFrame(gameLoop);
 }
 
 // ============= SIGN OUT =============
 function handleSignOut() {
     if (gameStateRef) {
         gameStateRef.off('value');
+        gameStateRef = null;
     }
+    if (actionsRef) {
+        actionsRef.off('child_added');
+        actionsRef = null;
+    }
+    processedActionIds.clear();
     auth.signOut().then(() => {
         currentUser = null;
         document.getElementById('auth-screen').classList.remove('hidden');
@@ -1809,22 +1987,12 @@ class Unit extends Entity {
                     }
                 }
             } else {
-                const shouldUseBridge = !this.isFlying && this.target && this.isAcrossRiver(this.target) && !this.canCrossRiver() && !this.isOnBridge();
-                const movementTarget = shouldUseBridge ? this.getBridgeTarget() : { x: this.target.x, y: this.target.y };
-                const angle = Math.atan2(movementTarget.y - this.y, movementTarget.x - this.x);
-                this.x += Math.cos(angle) * effectiveSpeed;
-                this.y += Math.sin(angle) * effectiveSpeed;
+                const movementTarget = this.getMovementTarget(this.target);
+                this.moveToward(movementTarget, effectiveSpeed);
             }
         } else if (!this.isFlying) {
             const forwardY = (this.team === 'player') ? -effectiveSpeed : effectiveSpeed;
-            if (this.target && this.isAcrossRiver(this.target) && !this.canCrossRiver() && !this.isOnBridge()) {
-                const movementTarget = this.getBridgeTarget();
-                const angle = Math.atan2(movementTarget.y - this.y, movementTarget.x - this.x);
-                this.x += Math.cos(angle) * effectiveSpeed;
-                this.y += Math.sin(angle) * effectiveSpeed;
-            } else {
-                this.y += forwardY;
-            }
+            this.y += forwardY;
         }
 
         if (this.attackCooldown > 0) this.attackCooldown--;
@@ -1860,6 +2028,42 @@ class Unit extends Entity {
             }
         }
         return closest;
+    }
+
+    moveToward(point, speed) {
+        const dx = point.x - this.x;
+        const dy = point.y - this.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= speed || dist === 0) {
+            this.x = point.x;
+            this.y = point.y;
+            return;
+        }
+        this.x += (dx / dist) * speed;
+        this.y += (dy / dist) * speed;
+    }
+
+    getMovementTarget(target) {
+        if (this.isFlying || !target || !this.isAcrossRiver(target) || this.canCrossRiver()) {
+            return { x: target.x, y: target.y };
+        }
+
+        const bridge = this.getBridgeTarget();
+        const riverMid = GAME_HEIGHT / 2;
+        const approachY = this.team === 'player' ? riverMid + 55 : riverMid - 55;
+        const exitY = this.team === 'player' ? riverMid - 55 : riverMid + 55;
+        const stillNeedsToCross = this.team === 'player' ? this.y > exitY : this.y < exitY;
+
+        if (!stillNeedsToCross) {
+            return { x: target.x, y: target.y };
+        }
+
+        const onOwnSide = this.team === 'player' ? this.y > approachY : this.y < approachY;
+        if (onOwnSide && Math.abs(this.x - bridge.x) > 4) {
+            return { x: bridge.x, y: approachY };
+        }
+
+        return { x: bridge.x, y: exitY };
     }
 
     getBridgeTarget() {
@@ -3013,42 +3217,8 @@ canvas.addEventListener('mousedown', (e) => {
     // Deployment area check: Spells can go anywhere, others must be on player's side.
     if (spec.type !== 'spell' && y < GAME_HEIGHT / 2) return; 
 
-    if (selectedCard.isStructure) {
-        entities.push(new Structure(cardType, x, y, 'player'));
-    } else if (spec.type === 'unit') {
-        
-        // --- MULTI-UNIT SPAWN LOGIC ---
-        if (spec.spawnCount) {
-            if (cardType === 'three_musketeers') {
-                const spawnUnits = [{x: x - 30, y: y + 15}, {x: x, y: y - 15}, {x: x + 30, y: y + 15}];
-                spawnUnits.forEach(pos => entities.push(new Unit('musketeer', pos.x, pos.y, 'player')));
-            } else if (cardType === 'royal_recruits') {
-                const separation = 40;
-                const startX = x - ((spec.spawnCount - 1) * separation) / 2;
-                for (let i = 0; i < spec.spawnCount; i++) {
-                    const spawnX = startX + i * separation;
-                    entities.push(new Unit(cardType, spawnX, y, 'player'));
-                }
-            } else if (cardType === 'goblin_gang') {
-                spec.spawn.forEach(unitType => {
-                    const offsetX = Math.random() * 20 - 10;
-                    const offsetY = Math.random() * 20 - 10;
-                    entities.push(new Unit(unitType, x + offsetX, y + offsetY, 'player'));
-                });
-            } else {
-                for (let i = 0; i < spec.spawnCount; i++) {
-                    const offsetX = Math.random() * 20 - 10;
-                    const offsetY = Math.random() * 20 - 10;
-                    entities.push(new Unit(cardType, x + offsetX, y + offsetY, 'player'));
-                }
-            }
-        } else {
-            // Single unit spawn (Knight, Royal Giant, etc.)
-            entities.push(new Unit(cardType, x, y, 'player'));
-        }
-    } else {
-        castSpell(cardType, x, y, 'player');
-    }
+    const played = applyCardPlay(cardType, x, y, 'player');
+    if (!played) return;
     
     elixir -= selectedCard.cost;
     
@@ -3056,6 +3226,9 @@ canvas.addEventListener('mousedown', (e) => {
     drawCard();
     const userAction = spec.type === 'spell' ? 'cast' : 'placed';
     addGameFeedMessage('User', `${userAction} ${SPEC_NAME(cardType)}`);
+    if (isMultiplayer) {
+        broadcastCardPlay(cardType, x, y).catch(error => console.error('Card play broadcast failed:', error));
+    }
     
     selectedCard = null;
     updateUI();
